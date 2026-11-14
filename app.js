@@ -461,13 +461,21 @@
     $app.innerHTML = h + '</div>';
   }
 
+  // 학생 카드 이름 아래: 다음 수업 날짜·요일·시간·회차
+  function nextLine(s) {
+    var U = s.upcoming;
+    if (!U) return [s.time, s.next ? s.next + '회차' : ''].filter(Boolean).join(' · ');
+    return ['다음 ' + (U.isToday ? '오늘 ' : '') + U.label, U.time, (U.no !== null && U.no !== undefined) ? U.no + '회차' : '']
+      .filter(Boolean).join(' · ');
+  }
+
   function teacherCard(s) {
     if (s.error) {
       return '<section class="card"><b>' + esc(s.name) + '</b><p class="empty">시트를 읽지 못했어요: ' + esc(s.error) + '</p></section>';
     }
     var busy = T.busy === s.key;
     var h = '<section class="card stu"><div class="stu-top"><div class="who"><span class="avatar">' + esc(String(s.name).charAt(0)) + '</span>' +
-      '<span class="txt"><b>' + esc(s.name) + '</b><span class="small">' + esc([s.time, s.next + '회차'].filter(Boolean).join(' · ')) + '</span></span></div>' +
+      '<span class="txt"><b>' + esc(s.name) + '</b><span class="small">' + esc(nextLine(s)) + '</span></span></div>' +
       '<button type="button" class="attend' + (s.attended ? ' on' : '') + '" data-act="attend" data-key="' + esc(s.key) + '"' +
       (s.attended || busy ? ' disabled' : '') + ' aria-pressed="' + !!s.attended + '">' + (busy ? '처리 중…' : (s.attended ? '출석 완료' : '출석')) + '</button></div>';
     h += '<div class="tags"><span class="tag">최근 7일 연습 ' + s.practice + '/7</span>' +
@@ -665,13 +673,13 @@
       stats: { total: 108, since: '2023.01.07', years: 3 }
     };
     var teacherStudents = [
-      { key: 'demo-g', name: 'ㄱ', time: '14:00', next: 108, attended: false, practice: 2,
+      { key: 'demo-g', name: 'ㄱ', time: '14:00', next: 108, attended: false, practice: 2, upcoming: { label: '11/16 (월)', time: '14:00', no: 108, isToday: false },
         pass: { done: 3, total: 4, payDue: false }, link: '?demo=1&view=student',
         latest: { no: 107, song: '밤양갱', tech: '코러스부터', task: '핑거스타일 기본 연습 구간', sheets: '', videos: '', audio: '', bpm: 84, quick: '60,72' } },
-      { key: 'demo-b', name: '학생 B (예시)', time: '16:00', next: 24, attended: true, practice: 5,
+      { key: 'demo-b', name: '학생 B (예시)', time: '16:00', next: 24, attended: true, practice: 5, upcoming: { label: '11/21 (토)', time: '16:00', no: 25, isToday: false },
         pass: { done: 4, total: 4, payDue: true }, link: '',
         latest: { no: 24, song: '[곡]', tech: '', task: '', sheets: '', videos: '', audio: '', bpm: '', quick: '' } },
-      { key: 'demo-c', name: '학생 C (예시)', time: '19:00', next: 9, attended: false, practice: 0,
+      { key: 'demo-c', name: '학생 C (예시)', time: '19:00', next: 9, attended: false, practice: 0, upcoming: { label: '11/14 (토)', time: '19:00', no: 9, isToday: true },
         pass: { done: 1, total: 4, payDue: false }, link: '',
         latest: { no: 8, song: '[곡]', tech: '', task: '', sheets: '', videos: '', audio: '', bpm: '', quick: '' } }
     ];

@@ -236,3 +236,4 @@ button.list-row { width: 100%; background: none; border: 0; border-top: 1px soli
 .next-lesson .when b { font-weight: 700; }
 .next-lesson .time { color: var(--muted); font-size: 15px; margin-left: 4px; }
 .res .ic.long { font-size: 9px; letter-spacing: -0.2px; }
+.stu .who .small { word-break: keep-all; }
