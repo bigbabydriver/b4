@@ -144,7 +144,7 @@ function doGet(e) {
   try {
     var p = e.parameter || {};
     if (p.action === 'student') return json_(studentPayload_(requireStudent_(p.k)));
-    if (p.action === 'audio') return json_(audioPayload_(requireStudent_(p.k), parseInt(p.i || '0', 10)));
+    if (p.action === 'audio') return json_(audioPayload_(requireStudent_(p.k), parseInt(p.i || '0', 10), parseInt(p.row || '0', 10)));
     if (p.action === 'admin') { requireAdmin_(p.admin); return json_(adminPayload_(p.scope === 'all')); }
     return json_({ ok: false, error: '알 수 없는 요청' });
   } catch (err) {
@@ -196,7 +196,8 @@ function blockRows_(rows) {
   rows.forEach(function (r) {
     if (r.isBreak) { out.push({ isBreak: true, content: '휴강' }); return; }
     if (!r.isSession) return;
-    var item = { no: r.no, dateLabel: dateLabel_(r.date), content: [r.song, r.tech].filter(Boolean).join(' · ') };
+    var item = { no: r.no, row: r.row, dateLabel: dateLabel_(r.date), content: [r.song, r.tech].filter(Boolean).join(' · '),
+                 song: r.song, tech: r.tech, task: r.task, mat: rowMaterials_(r) };
     if (r.no === 0) {
       item.trial = true;                     // 0회차 = 시범 수업
     } else {
@@ -242,8 +243,23 @@ function materialsView_(sessions) {
     videos: vRow ? parseLinks_(vRow.videos, (vRow.song || '') + ' 영상') : [],
     audio: audio.map(function (a, i) { return { index: i, label: a.label }; }),
     audioSong: aRow ? (aRow.song || '') : '',
+    audioRow: aRow ? aRow.row : null,
     bpm: aRow && aRow.bpm ? Number(aRow.bpm) : null,
     quick: aRow && aRow.quick ? String(aRow.quick).split(/[,\s]+/).map(Number).filter(function (n) { return n > 0; }) : []
+  };
+}
+
+// 한 회차의 자료(악보·영상·음원) — 내 기록에서 회차를 눌렀을 때 보여줌
+function rowMaterials_(r) {
+  if (!r.sheets && !r.videos && !r.audio) return null;
+  return {
+    sheets: parseLinks_(r.sheets, (r.song || '') + ' 악보'),
+    videos: parseLinks_(r.videos, (r.song || '') + ' 영상'),
+    audio: parseLinks_(r.audio, '연습 음원').map(function (a, i) { return { index: i, label: a.label }; }),
+    audioSong: r.song || '',
+    audioRow: r.audio ? r.row : null,
+    bpm: r.bpm ? Number(r.bpm) : null,
+    quick: r.quick ? String(r.quick).split(/[,\s]+/).map(Number).filter(function (n) { return n > 0; }) : []
   };
 }
 
@@ -340,11 +356,15 @@ function normalizeSong_(s) {
 /* =============================================================
  * 연습 음원
  * =========================================================== */
-function audioPayload_(st, index) {
+function audioPayload_(st, index, rowNum) {
   var ss = SpreadsheetApp.openByUrl(st.sheetUrl);
   var sessions = readLog_(ss).filter(function (r) { return r.isSession; });
   var row = null;
-  for (var i = sessions.length - 1; i >= 0; i--) if (sessions[i].audio) { row = sessions[i]; break; }
+  if (rowNum) {
+    row = sessions.filter(function (r) { return r.row === rowNum && r.audio; })[0] || null;
+  } else {
+    for (var i = sessions.length - 1; i >= 0; i--) if (sessions[i].audio) { row = sessions[i]; break; }
+  }
   if (!row) throw new Error('등록된 음원이 없습니다');
   var links = parseLinks_(row.audio, '');
   var link = links[index];
