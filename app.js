@@ -182,7 +182,7 @@
         '<span class="big">' + p.done + '<small> / ' + p.total + '</small></span></div><div class="bars">';
       for (var i = 0; i < p.total; i++) h += '<i class="' + (i < p.done ? 'on' : '') + '"></i>';
       h += '</div><div class="card-head small"><span>' + p.from + '–' + p.to + '회차</span>' +
-        (p.payDue ? '<span class="due">다음 레슨 전 결제</span>' : '<span>결제 완료 · ' + esc(p.paidLabel) + '</span>') +
+        (p.payDue ? '<span class="due">다음 레슨 전 결제</span>' : '<span>수강료 납부완료 · ' + esc(p.paidLabel) + '</span>') +
         '</div></section>';
     }
     return h + '</div>';
@@ -755,7 +755,15 @@
   }
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
-    window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (reg) { reg.update(); }).catch(function () {});
+    });
+    // 새 버전의 서비스 워커가 자리를 잡으면 한 번 새로고침해서 새 화면 파일로 바꿈
+    var hadController = !!navigator.serviceWorker.controller, reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (!hadController || reloaded) return;
+      reloaded = true; location.reload();
+    });
   }
   boot();
 })();

@@ -1,6 +1,6 @@
 // B4 레슨 노트 — 서비스 워커
 // 앱 화면 파일만 저장해 두고(빠른 실행), 레슨 데이터는 항상 새로 받아옵니다.
-const VERSION = 'b4-v1';
+const VERSION = 'b4-v2'; // 화면 파일을 바꿀 때 숫자를 올리면 폰에서도 새로 받습니다
 const SHELL = [
   './',
   './index.html',
@@ -14,7 +14,7 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -32,10 +32,10 @@ self.addEventListener('fetch', (e) => {
 
   // 네트워크 우선, 실패하면 저장본
   e.respondWith(
-    fetch(e.request)
+    // cache: 'no-cache' → 휴대폰에 저장된 파일이 있어도 항상 서버에 최신인지 확인
+    fetch(url.href, { cache: 'no-cache', credentials: 'same-origin' })
       .then((res) => {
-        const copy = res.clone();
-        caches.open(VERSION).then((c) => c.put(e.request, copy));
+        if (res.ok) { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(e.request, copy)); }
         return res;
       })
       .catch(() => caches.match(e.request, { ignoreSearch: true }))
