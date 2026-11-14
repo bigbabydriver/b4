@@ -324,8 +324,10 @@
     h += '<section class="card" style="gap:0"><div class="card-head" style="margin-bottom:8px"><h2>레슨 기록</h2><span class="small">최근순</span></div>';
     shown.forEach(function (r) {
       if (r.isBreak) { h += '<div class="break-row">휴강</div>'; return; }
-      var tone = r.trial ? 'trial' : (r.block !== undefined ? 'b' + (r.block % 3) : 'none');
-      var tag = r.trial ? '<span class="pos trial">시범</span>' : (r.pos ? '<span class="pos">' + r.pos + '/4</span>' : '');
+      // 납부 완료 묶음은 색(주황·초록·파랑 순환), 납부 전 묶음은 회색 점선
+      var tone = r.trial ? 'trial' : (r.block === undefined ? 'none' : (r.paid ? 'b' + (r.block % 3) : 'unpaid'));
+      var tag = r.trial ? '<span class="pos trial">시범</span>' :
+        (r.pos ? '<span class="pos">' + r.pos + '/4</span>' + (r.paid ? '' : '<span class="pos unpaid">납부 전</span>') : '');
       h += '<div class="list-row tone-' + tone + '"><span class="no"><b>' + r.no + '</b><span>회차</span></span>' +
         '<span class="txt"><span class="when">' + esc(r.dateLabel) + ' ' + tag + '</span>' +
         '<span class="what">' + esc(r.content || '—') + '</span>' +
@@ -343,7 +345,7 @@
       var shownPays = S.showAllPays ? pays : pays.slice(0, 5);
       h += '<section class="card" style="gap:0"><div class="card-head" style="margin-bottom:8px"><h2>수강료 납부 내역</h2><span class="small">' + pays.length + '회</span></div>';
       shownPays.forEach(function (p, i) {
-        h += '<div class="pay-row tone-b' + ((pays.length - 1 - i) % 3) + '"><span class="txt"><span class="when">' + esc(p.date) + '</span>' +
+        h += '<div class="pay-row tone-b' + ((p.block !== undefined ? p.block : pays.length - 1 - i) % 3) + '"><span class="txt"><span class="when">' + esc(p.date) + '</span>' +
           '<span class="what">' + p.from + '–' + p.to + '회차</span></span><span class="fee">' + esc(p.fee || '') + '</span></div>';
       });
       if (pays.length > 5) {
@@ -562,8 +564,9 @@
     // 미리보기: 105회차에 결제, 101회차에 결제 → 4회 묶음 표시
     var sessions = sessionsRaw.map(function (r) {
       var x = Object.assign({}, r);
-      if (r.no >= 105) { x.block = 1; x.pos = r.no - 104; }
-      else if (r.no >= 101) { x.block = 0; x.pos = r.no - 100; }
+      if (r.no >= 105) { x.block = 2; x.pos = r.no - 104; x.paid = true; }
+      else if (r.no >= 101) { x.block = 1; x.pos = r.no - 100; x.paid = true; }
+      else { x.block = 0; x.pos = r.no - 96; x.paid = false; }
       if (r.no === 105) x.pay = { date: '2026.03.04', fee: '130,000원' };
       if (r.no === 101) x.pay = { date: '2026.01.21', fee: '130,000원' };
       return x;
@@ -580,8 +583,8 @@
       pass: { done: 3, total: 4, from: 105, to: 108, paidLabel: '3/4', payDue: false },
       sessions: sessions,
       payments: [
-        { date: '2026.03.04', fee: '130,000원', from: 105, to: 108 },
-        { date: '2026.01.21', fee: '130,000원', from: 101, to: 104 }
+        { date: '2026.03.04', fee: '130,000원', from: 105, to: 108, block: 2 },
+        { date: '2026.01.21', fee: '130,000원', from: 101, to: 104, block: 1 }
       ],
       repertoire: [
         { when: '26.02', title: '밤양갱', meta: '2회 레슨 · 마지막 107회차' },

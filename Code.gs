@@ -183,15 +183,16 @@ function studentPayload_(st) {
     week: weekView_(practice),
     pass: passView_(sessions, rows.filter(function (r) { return r.isPlanned && r.row > (latest ? latest.row : 0); })),
     sessions: blockRows_(rows).reverse(),
-    payments: paymentsView_(sessions),
+    payments: paymentsView_(rows),
     repertoire: repertoire_(sessions),
     stats: statsView_(sessions)
   };
 }
 
-// 레슨 기록: 결제(D열)가 있는 회차부터 다음 결제 전까지를 한 묶음(4회)으로 표시
+// 레슨 기록: 4회씩 한 묶음. 결제(D열)가 적힌 회차에서 새 묶음이 시작되고 '납부 완료',
+// 결제 없이 4회가 지나 시작된 묶음은 '납부 전'으로 표시
 function blockRows_(rows) {
-  var block = -1, pos = 0, out = [];
+  var block = -1, pos = 0, paid = false, out = [];
   rows.forEach(function (r) {
     if (r.isBreak) { out.push({ isBreak: true, content: '휴강' }); return; }
     if (!r.isSession) return;
@@ -199,9 +200,10 @@ function blockRows_(rows) {
     if (r.no === 0) {
       item.trial = true;                     // 0회차 = 시범 수업
     } else {
-      if (r.pay) { block++; pos = 0; item.pay = payLabel_(r); }
+      if (r.pay) { block++; pos = 0; paid = true; item.pay = payLabel_(r); }
+      else if (block < 0 || pos >= PASS_SIZE) { block++; pos = 0; paid = false; }
       pos++;
-      if (block >= 0) { item.block = block; item.pos = pos; }
+      item.block = block; item.pos = pos; item.paid = paid;
     }
     out.push(item);
   });
@@ -215,12 +217,11 @@ function payLabel_(r) {
   };
 }
 
-// 수강료 납부 내역 (최근순)
-function paymentsView_(sessions) {
-  return sessions.filter(function (r) { return r.pay && r.no !== 0; })
+// 수강료 납부 내역 (최근순) — 레슨 기록의 묶음 색과 같은 번호(block)를 함께 보냄
+function paymentsView_(rows) {
+  return blockRows_(rows).filter(function (r) { return r.pay; })
     .map(function (r) {
-      var p = payLabel_(r);
-      return { date: p.date, fee: p.fee, from: r.no, to: r.no + PASS_SIZE - 1 };
+      return { date: r.pay.date, fee: r.pay.fee, from: r.no, to: r.no + PASS_SIZE - 1, block: r.block };
     }).reverse();
 }
 
