@@ -185,7 +185,50 @@ function studentPayload_(st) {
     sessions: blockRows_(rows).reverse(),
     payments: paymentsView_(rows),
     repertoire: repertoire_(sessions),
-    stats: statsView_(sessions)
+    stats: statsView_(sessions),
+    next: nextLesson_(rows, st, latest)
+  };
+}
+
+// 다음 수업: 학생 시트에 미리 적어둔 미래 날짜가 있으면 그것, 없으면 [학생] 탭 레슨 요일로 계산
+function nextLesson_(rows, st, latest) {
+  var today = todayStr_();
+  var timeStr = st.time && st.time !== 'undefined' ? String(st.time).trim() : '';
+  var planned = rows.filter(function (r) {
+    return r.isPlanned && r.date && Utilities.formatDate(r.date, TZ, 'yyyy-MM-dd') > today;
+  }).sort(function (a, b) { return a.date - b.date; })[0];
+  var breaks = {};
+  rows.forEach(function (r) { if (r.isBreak && r.date) breaks[Utilities.formatDate(r.date, TZ, 'yyyy-MM-dd')] = true; });
+  var nextNo = latest && typeof latest.no === 'number' ? latest.no + 1 : null;
+
+  var date = null, no = nextNo;
+  if (planned) {
+    date = planned.date;
+    if (planned.no !== null) no = planned.no;
+  } else {
+    // 레슨 요일 글자(월·화·수…)를 찾아 가장 가까운 날짜 계산. 여러 요일이면 가장 빠른 날
+    var want = [];
+    String(st.day || '').replace(/[일월화수목금토]/g, function (ch) { want.push(DOW.indexOf(ch)); return ch; });
+    if (!want.length) return null;
+    var latestStr = latest && latest.date ? Utilities.formatDate(latest.date, TZ, 'yyyy-MM-dd') : '';
+    var base = noon_(today);
+    for (var i = 0; i < 28 && !date; i++) {
+      var d = new Date(base.getTime() + i * 86400000);
+      var ds = Utilities.formatDate(d, TZ, 'yyyy-MM-dd');
+      var w = parseInt(Utilities.formatDate(d, TZ, 'u'), 10) % 7;
+      if (want.indexOf(w) < 0 || breaks[ds]) continue;
+      if (i === 0 && latestStr === today) continue; // 오늘 레슨을 이미 기록했으면 다음 주로
+      date = d;
+    }
+    if (!date) return null;
+  }
+  var dstr = Utilities.formatDate(date, TZ, 'yyyy-MM-dd');
+  return {
+    date: dstr,
+    label: Utilities.formatDate(date, TZ, 'M/d') + ' (' + DOW[parseInt(Utilities.formatDate(date, TZ, 'u'), 10) % 7] + ')',
+    time: timeStr,
+    no: no,
+    isToday: dstr === today
   };
 }
 
@@ -232,10 +275,9 @@ function lessonView_(r) {
 
 // 자료: 각 칸에서 가장 최근에 값이 있는 회차 기준
 function materialsView_(sessions) {
-  function latestWith(field) {
-    for (var i = sessions.length - 1; i >= 0; i--) if (sessions[i][field]) return sessions[i];
-    return null;
-  }
+  // 이번 주 화면 = 가장 최근 회차에 적힌 자료만 (비어 있으면 이전 회차 자료를 끌어오지 않음)
+  var last = sessions.length ? sessions[sessions.length - 1] : null;
+  function latestWith(field) { return last && last[field] ? last : null; }
   var sRow = latestWith('sheets'), vRow = latestWith('videos'), aRow = latestWith('audio');
   var audio = aRow ? parseLinks_(aRow.audio, '연습 음원') : [];
   return {
