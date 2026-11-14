@@ -83,7 +83,7 @@
   /* =========================================================
    * 학생 화면
    * ======================================================= */
-  var S = { key: '', data: null, tab: 'home', showAll: false, bpm: null, pct: 100, track: 0, playing: false, loadingAudio: false };
+  var S = { key: '', data: null, tab: 'home', showAll: false, bpm: null, pct: 100, track: 0, playing: false, loadingAudio: false, loop: false };
   var audio = new Audio();
   audio.preload = 'auto';
   var audioUrls = {};
@@ -209,7 +209,10 @@
       ' aria-label="' + (S.playing ? '일시정지' : '재생') + '">' +
       (S.loadingAudio ? '<div class="spinner" style="width:20px;height:20px;border-width:2px"></div>' : (S.playing ? ICON.pause : ICON.play)) +
       '</button><span class="meta"><b>' + esc((m.audioSong ? m.audioSong + ' · ' : '') + (cur ? cur.label : '')) + '</b>' +
-      '<span>' + (m.bpm ? '원곡 ' + m.bpm + ' BPM' : '원곡 속도 기준') + '</span></span></div>';
+      '<span>' + (m.bpm ? '원곡 ' + m.bpm + ' BPM' : '원곡 속도 기준') + '</span></span>' +
+      '<button type="button" class="chip' + (S.loop ? ' on' : '') + '" style="flex-shrink:0;white-space:nowrap" data-act="loop" aria-pressed="' + S.loop + '" aria-label="반복 재생">' +
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;margin-right:4px"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg>' +
+      '반복</button></div>';
     h += '<div><input class="seek" type="range" min="0" max="1000" value="0" step="1" data-act="seek" aria-label="재생 위치">' +
       '<div class="times"><span data-t="cur">0:00</span><span data-t="dur">' + (audioUrls[S.track] ? '' : '--:--') + '</span></div></div>';
     h += '<div class="bpmbox"><button type="button" class="step" data-act="dec" aria-label="느리게">−</button>' +
@@ -234,6 +237,7 @@
   function applyRate() {
     var m = S.data && S.data.materials;
     if (!m) return;
+    audio.loop = S.loop;
     setPitchLock();
     audio.playbackRate = rateInfo(m).rate;
   }
@@ -320,14 +324,33 @@
     h += '<section class="card" style="gap:0"><div class="card-head" style="margin-bottom:8px"><h2>레슨 기록</h2><span class="small">최근순</span></div>';
     shown.forEach(function (r) {
       if (r.isBreak) { h += '<div class="break-row">휴강</div>'; return; }
-      h += '<div class="list-row"><span class="no"><b>' + r.no + '</b><span>회차</span></span>' +
-        '<span class="txt"><span class="when">' + esc(r.dateLabel) + '</span><span class="what">' + esc(r.content || '—') + '</span></span></div>';
+      var tone = r.trial ? 'trial' : (r.block !== undefined ? 'b' + (r.block % 3) : 'none');
+      var tag = r.trial ? '<span class="pos trial">시범</span>' : (r.pos ? '<span class="pos">' + r.pos + '/4</span>' : '');
+      h += '<div class="list-row tone-' + tone + '"><span class="no"><b>' + r.no + '</b><span>회차</span></span>' +
+        '<span class="txt"><span class="when">' + esc(r.dateLabel) + ' ' + tag + '</span>' +
+        '<span class="what">' + esc(r.content || '—') + '</span>' +
+        (r.pay ? '<span class="paid">수강료 납부 · ' + esc(r.pay.date) + (r.pay.fee ? ' · ' + esc(r.pay.fee) : '') + '</span>' : '') +
+        '</span></div>';
     });
     if (rows.length > 5) {
       h += '<button type="button" class="btn-soft" style="margin-top:8px" data-act="more">' +
         (S.showAll ? '접기' : '이전 기록 더 보기 (전체 ' + (st.total || rows.length) + '회)') + '</button>';
     }
     h += '</section>';
+
+    var pays = d.payments || [];
+    if (pays.length) {
+      var shownPays = S.showAllPays ? pays : pays.slice(0, 5);
+      h += '<section class="card" style="gap:0"><div class="card-head" style="margin-bottom:8px"><h2>수강료 납부 내역</h2><span class="small">' + pays.length + '회</span></div>';
+      shownPays.forEach(function (p, i) {
+        h += '<div class="pay-row tone-b' + ((pays.length - 1 - i) % 3) + '"><span class="txt"><span class="when">' + esc(p.date) + '</span>' +
+          '<span class="what">' + p.from + '–' + p.to + '회차</span></span><span class="fee">' + esc(p.fee || '') + '</span></div>';
+      });
+      if (pays.length > 5) {
+        h += '<button type="button" class="btn-soft" style="margin-top:8px" data-act="morepays">' + (S.showAllPays ? '접기' : '전체 보기') + '</button>';
+      }
+      h += '</section>';
+    }
 
     var rep = d.repertoire || [];
     if (rep.length) {
@@ -405,7 +428,7 @@
     function field(name, label, val, type, hint, area) {
       var input = area
         ? '<textarea name="' + name + '" rows="2">' + esc(val) + '</textarea>'
-        : '<input name="' + name + '" type="' + (type || 'text') + '" value="' + esc(val) + '"' + (type === 'number' ? ' inputmode="numeric"' : '') + (name === 'quick' ? ' placeholder="예: 60,72"' : '') + '>';
+        : '<input name="' + name + '" type="' + (type || 'text') + '" value="' + esc(val) + '"' + (type === 'number' ? ' inputmode="numeric"' : '') + (name === 'quick' ? ' placeholder="예: 60,72"' : '') + (name === 'fee' ? ' placeholder="예: 130000"' : '') + '>';
       return '<label>' + label + (hint ? ' <span class="hint">' + hint + '</span>' : '') + input + '</label>';
     }
     return '<form class="form" data-key="' + esc(s.key) + '">' + warn +
@@ -416,7 +439,8 @@
       field('videos', '영상 링크', L.videos, '', '한 줄에 하나', true) +
       field('audio', '음원 링크', L.audio, '', '드라이브 MP3 · 한 줄에 하나', true) +
       '<div class="two">' + field('bpm', '원곡 BPM', L.bpm, 'number') + field('quick', '빠른 선택 BPM', L.quick, 'text') + '</div>' +
-      '<label class="check"><input type="checkbox" name="paid"> 이번 회차에 결제 받음</label>' +
+      '<div class="two"><label class="check"><input type="checkbox" name="paid"> 이번 회차에 결제 받음</label>' +
+      field('fee', '수강료(원)', '', 'number') + '</div>' +
       '<button type="submit" class="primary"' + (T.busy === s.key ? ' disabled' : '') + '>시트에 저장</button></form>';
   }
 
@@ -436,7 +460,7 @@
       action: 'record', admin: T.key, k: key,
       song: f.song.value, tech: f.tech.value, task: f.task.value,
       sheets: f.sheets.value, videos: f.videos.value, audio: f.audio.value,
-      bpm: f.bpm.value, quick: f.quick.value, paid: f.paid.checked
+      bpm: f.bpm.value, quick: f.quick.value, paid: f.paid.checked, fee: f.fee.value
     };
     T.busy = key; renderTeacher();
     apiPost(body).then(function (j) {
@@ -457,8 +481,10 @@
       case 'retry': location.reload(); break;
       case 'tab': S.tab = b.getAttribute('data-tab'); renderStudent(); window.scrollTo(0, 0); break;
       case 'more': S.showAll = !S.showAll; renderStudent(); break;
+      case 'morepays': S.showAllPays = !S.showAllPays; renderStudent(); break;
       case 'practice': togglePractice(b.getAttribute('data-date')); break;
       case 'play': togglePlay(); break;
+      case 'loop': S.loop = !S.loop; audio.loop = S.loop; renderStudent(); break;
       case 'dec': changeRate(-1); break;
       case 'inc': changeRate(1); break;
       case 'quick': changeRate(0, Number(b.getAttribute('data-v'))); break;
@@ -521,7 +547,7 @@
     // 예시: 이번 주 첫날·둘째 날 연습한 것으로 표시
     (function () { var w = week().days; if (!w[0].future) practice[w[0].date] = true; if (!w[1].future) practice[w[1].date] = true; })();
 
-    var sessions = [
+    var sessionsRaw = [
       { no: 107, dateLabel: '2026.02.25 (수)', content: '밤양갱 코러스부터' },
       { no: 106, dateLabel: '2026.02.11 (수)', content: '밤양갱' },
       { no: 105, dateLabel: '2026.01.28 (수)', content: "We're Going to Be Friends / Stand by Me · Settling the Spirit 쳐보기" },
@@ -533,6 +559,15 @@
       { no: 99, dateLabel: '2025.12.17 (수)', content: 'Settling the Spirit / Last Christmas' },
       { no: 98, dateLabel: '2025.12.03 (수)', content: 'Settling the Spirit' }
     ];
+    // 미리보기: 105회차에 결제, 101회차에 결제 → 4회 묶음 표시
+    var sessions = sessionsRaw.map(function (r) {
+      var x = Object.assign({}, r);
+      if (r.no >= 105) { x.block = 1; x.pos = r.no - 104; }
+      else if (r.no >= 101) { x.block = 0; x.pos = r.no - 100; }
+      if (r.no === 105) x.pay = { date: '2026.03.04', fee: '130,000원' };
+      if (r.no === 101) x.pay = { date: '2026.01.21', fee: '130,000원' };
+      return x;
+    });
     var student = {
       ok: true, name: 'ㄱ', today: todayS,
       latest: { no: 107, dateLabel: '2026.02.25 (수)', song: '밤양갱', tech: '코러스부터', task: '핑거스타일 기본 연습 구간' },
@@ -544,6 +579,10 @@
       },
       pass: { done: 3, total: 4, from: 105, to: 108, paidLabel: '3/4', payDue: false },
       sessions: sessions,
+      payments: [
+        { date: '2026.03.04', fee: '130,000원', from: 105, to: 108 },
+        { date: '2026.01.21', fee: '130,000원', from: 101, to: 104 }
+      ],
       repertoire: [
         { when: '26.02', title: '밤양갱', meta: '2회 레슨 · 마지막 107회차' },
         { when: '26.01', title: "We're Going to Be Friends", meta: '2회 레슨 · 마지막 105회차' },

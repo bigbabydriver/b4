@@ -199,3 +199,19 @@ a { color: inherit; }
   max-width: calc(100% - 32px);
 }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* 수강료 4회 묶음 색상 */
+.list-row, .pay-row { border-left: 4px solid transparent; padding-left: 10px; margin-left: -4px; }
+.tone-b0 { border-left-color: #C2410C; }
+.tone-b1 { border-left-color: #0F5C5A; }
+.tone-b2 { border-left-color: #1E3A8A; }
+.tone-trial { border-left-color: #BFC2C9; }
+.pos { font-family: 'IBM Plex Sans KR', sans-serif; font-size: 11px; font-weight: 700; color: var(--muted); background: var(--ground); border-radius: 999px; padding: 1px 7px; margin-left: 4px; vertical-align: 1px; }
+.pos.trial { background: #EEEBE5; }
+.paid { display: inline-block; align-self: flex-start; margin-top: 4px; font-size: 12px; font-weight: 700; color: var(--accent-ink); background: var(--accent-soft); border-radius: 999px; padding: 3px 10px; }
+.pay-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 10px; padding-bottom: 10px; border-top: 1px solid var(--line-soft); }
+.pay-row .txt { display: flex; flex-direction: column; gap: 2px; }
+.pay-row .when { font-family: var(--display); font-size: 13px; font-weight: 700; color: var(--ink); }
+.pay-row .what { font-size: 13px; color: var(--muted); }
+.pay-row .fee { font-family: var(--display); font-size: 15px; font-weight: 700; }
+.form .two .check { align-self: end; }
