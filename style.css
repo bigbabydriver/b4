@@ -228,3 +228,11 @@ button.list-row { width: 100%; background: none; border: 0; border-top: 1px soli
 .row-detail .kv { display: flex; flex-direction: column; gap: 2px; }
 .row-detail .kv span { font-size: 12px; color: var(--muted); }
 .row-detail .kv b { font-size: 14px; font-weight: 600; line-height: 1.45; }
+
+/* 다음 수업 */
+.next-lesson { flex-direction: row; align-items: center; gap: 10px; padding: 14px 18px; }
+.next-lesson .label { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.next-lesson .when { flex: 1; font-size: 17px; }
+.next-lesson .when b { font-weight: 700; }
+.next-lesson .time { color: var(--muted); font-size: 15px; margin-left: 4px; }
+.res .ic.long { font-size: 9px; letter-spacing: -0.2px; }

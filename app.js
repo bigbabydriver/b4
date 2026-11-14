@@ -130,6 +130,16 @@
       (L ? esc(L.no + '회차 · ' + L.dateLabel) : '아직 레슨 기록이 없어요') +
       '</span><h1>이번 주 레슨 노트</h1></section>';
 
+    // 다음 수업 날짜
+    var N = d.next;
+    if (N) {
+      h += '<section class="card next-lesson"><span class="label">다음 수업</span>' +
+        '<span class="when"><b>' + (N.isToday ? '오늘 · ' : '') + esc(N.label) + '</b>' +
+        (N.time ? ' <span class="time">' + esc(N.time) + '</span>' : '') + '</span>' +
+        (N.no !== null && N.no !== undefined ? '<span class="pos">' + esc(String(N.no)) + '회차</span>' : '') +
+        '</section>';
+    }
+
     if (L) {
       h += '<section class="hero">' +
         '<div class="block"><span class="label">이번 곡</span><span class="song">' + esc(L.song || '—') + '</span>' +
@@ -158,14 +168,7 @@
     if (!m.sheets.length && !m.videos.length && !m.audio.length) {
       h += '<p class="empty">아직 등록된 자료가 없어요.</p>';
     }
-    m.sheets.forEach(function (x) {
-      h += '<a class="res" href="' + esc(safeUrl(x.url)) + '" target="_blank" rel="noopener">' +
-        '<span class="ic pdf">PDF</span><span class="txt"><b>' + esc(x.label) + '</b><span class="small">악보</span></span>' + ICON.chev + '</a>';
-    });
-    m.videos.forEach(function (x) {
-      h += '<a class="res" href="' + esc(safeUrl(x.url)) + '" target="_blank" rel="noopener">' +
-        '<span class="ic vid">' + ICON.vid + '</span><span class="txt"><b>' + esc(x.label) + '</b><span class="small">영상</span></span>' + ICON.chev + '</a>';
-    });
+    h += fileRows(m);
     if (m.audio.length) {
       useCtx(m);
       h += '<div class="subhead"><b>연습 음원</b><span class="small">음정은 그대로, 속도만 조절</span></div>' + playerHTML(m);
@@ -330,6 +333,22 @@
     });
   }
 
+  // 악보·영상 칸의 자료 → 파일 형식(확장자)만 표시
+  var VIDEO_EXT = ['YouTube', 'MP4', 'MOV', 'M4V', 'AVI', 'MKV', 'WEBM'];
+  function fileRows(m) {
+    var h = '';
+    (m.sheets || []).concat(m.videos || []).forEach(function (x) {
+      var ext = x.ext || '';
+      var isVid = VIDEO_EXT.indexOf(ext) >= 0;
+      var icon = ext === 'YouTube' ? ICON.vid : (ext ? esc(ext) : '링크');
+      var cls = 'ic ' + (isVid ? 'vid' : 'pdf') + (ext.length > 3 && ext !== 'YouTube' ? ' long' : '');
+      h += '<a class="res" href="' + esc(safeUrl(x.url)) + '" target="_blank" rel="noopener">' +
+        '<span class="' + cls + '">' + icon + '</span><span class="txt"><b>' + esc(x.label) + '</b>' +
+        (ext ? '<span class="small">' + esc(ext) + '</span>' : '') + '</span>' + ICON.chev + '</a>';
+    });
+    return h;
+  }
+
   function rowDetail(r) {
     var h = '<div class="row-detail">';
     if (r.song) h += '<div class="kv"><span>곡</span><b>' + esc(r.song) + '</b></div>';
@@ -339,12 +358,7 @@
     if (!m) {
       h += '<p class="empty">이 회차에 등록된 자료가 없어요.</p>';
     } else {
-      m.sheets.forEach(function (x) {
-        h += '<a class="res" href="' + esc(safeUrl(x.url)) + '" target="_blank" rel="noopener"><span class="ic pdf">PDF</span><span class="txt"><b>' + esc(x.label) + '</b><span class="small">악보</span></span>' + ICON.chev + '</a>';
-      });
-      m.videos.forEach(function (x) {
-        h += '<a class="res" href="' + esc(safeUrl(x.url)) + '" target="_blank" rel="noopener"><span class="ic vid">' + ICON.vid + '</span><span class="txt"><b>' + esc(x.label) + '</b><span class="small">영상</span></span>' + ICON.chev + '</a>';
-      });
+      h += fileRows(m);
       if (m.audio.length) { useCtx(m); h += playerHTML(m); }
     }
     return h + '</div>';
@@ -613,8 +627,8 @@
     var sessions = sessionsRaw.map(function (r, i) {
       var x = Object.assign({}, r);
       x.row = 200 - i; x.song = r.content; x.tech = ''; x.task = '';
-      if (r.no === 107) x.mat = { sheets: [{ label: '밤양갱 악보', url: '#' }], videos: [], audio: [{ index: 0, label: '메트로놈 예시' }], audioSong: '밤양갱', audioRow: x.row, bpm: 84, quick: [60, 72] };
-      if (r.no === 103) x.mat = { sheets: [{ label: 'Settling the Spirit 악보', url: '#' }], videos: [{ label: 'Sea of Love 영상', url: '#' }], audio: [{ index: 0, label: '메트로놈 예시' }], audioSong: 'Settling the Spirit', audioRow: x.row, bpm: 70, quick: [] };
+      if (r.no === 107) x.mat = { sheets: [{ label: '밤양갱_TAB', url: '#', ext: 'PDF' }, { label: '밤양갱_코드표', url: '#', ext: 'PDF' }], videos: [], audio: [{ index: 0, label: '메트로놈 예시' }], audioSong: '밤양갱', audioRow: x.row, bpm: 84, quick: [60, 72] };
+      if (r.no === 103) x.mat = { sheets: [{ label: 'Settling the Spirit', url: '#', ext: 'PDF' }], videos: [{ label: 'Sea of Love', url: '#', ext: 'YouTube' }], audio: [{ index: 0, label: '메트로놈 예시' }], audioSong: 'Settling the Spirit', audioRow: x.row, bpm: 70, quick: [] };
       if (r.no >= 105) { x.block = 2; x.pos = r.no - 104; x.paid = true; }
       else if (r.no >= 101) { x.block = 1; x.pos = r.no - 100; x.paid = true; }
       else { x.block = 0; x.pos = r.no - 96; x.paid = false; }
@@ -626,12 +640,13 @@
       ok: true, name: 'ㄱ', today: todayS,
       latest: { no: 107, dateLabel: '2026.02.25 (수)', song: '밤양갱', tech: '코러스부터', task: '핑거스타일 기본 연습 구간' },
       materials: {
-        sheets: [{ label: '밤양갱 악보', url: '#' }],
-        videos: [{ label: '핑거스타일 기본 연습 영상', url: '#' }],
-        audio: [{ index: 0, label: '메트로놈 예시' }],
+        sheets: [{ label: '밤양갱_TAB', url: '#', ext: 'PDF' }, { label: '밤양갱_코드표', url: '#', ext: 'PDF' }],
+        videos: [{ label: '핑거스타일 기본 연습', url: '#', ext: 'MP4' }],
+        audio: [{ index: 0, label: '메트로놈 예시' }, { index: 1, label: '반주만' }],
         audioSong: '밤양갱', audioRow: 200, bpm: 84, quick: [60, 72]
       },
       pass: { done: 3, total: 4, from: 105, to: 108, paidLabel: '3/4', payDue: false },
+      next: { date: '', label: '11/18 (수)', time: '19:00', no: 108, isToday: false },
       sessions: sessions,
       payments: [
         { date: '2026.03.04', fee: '130,000원', from: 105, to: 108, block: 2 },
