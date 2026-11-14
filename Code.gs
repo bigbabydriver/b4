@@ -540,6 +540,7 @@ function adminPayload_(all) {
         key: st.key, name: st.name, time: st.time, day: st.day,
         next: latest ? (attended ? latest.no : latest.no + 1) : 0,
         attended: attended,
+        upcoming: nextLesson_(rowsAll, st, latest), // 다음 수업 날짜·요일
         practice: last7,
         pass: passView_(sessions, planned),
         link: base ? base + '?k=' + st.key : '',
