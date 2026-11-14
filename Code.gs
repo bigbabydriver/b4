@@ -554,7 +554,12 @@ function adminPayload_(all) {
       return { key: st.key, name: st.name, time: st.time, error: err.message };
     }
   });
-  out.sort(function (a, b) { return String(a.time).localeCompare(String(b.time)); });
+  // 다가오는 수업 날짜순 → 같은 날이면 시간순. 날짜를 알 수 없는 학생은 맨 뒤
+  out.sort(function (a, b) {
+    var da = a.upcoming ? a.upcoming.date : '9999', db = b.upcoming ? b.upcoming.date : '9999';
+    if (da !== db) return da < db ? -1 : 1;
+    return String(a.time || '').localeCompare(String(b.time || ''));
+  });
   return {
     ok: true,
     todayLabel: Utilities.formatDate(new Date(), TZ, 'M월 d일') + ' (' + todayDow + ')',
