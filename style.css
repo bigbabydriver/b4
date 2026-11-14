@@ -218,3 +218,13 @@ a { color: inherit; }
 
 .tone-unpaid { border-left: 4px dashed #BFC2C9; }
 .pos.unpaid { color: #5B5F68; background: transparent; border: 1px dashed #BFC2C9; }
+
+/* 내 기록: 회차 눌러서 자료 보기 */
+button.list-row { width: 100%; background: none; border: 0; border-top: 1px solid var(--line-soft); text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.list-row .chev { margin-left: auto; color: var(--muted); font-size: 14px; padding-left: 6px; }
+.list-row.open { background: #FBFAF7; }
+.pos.has-mat { color: var(--teal); background: var(--teal-soft); }
+.row-detail { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 14px 14px; border-left: 4px solid var(--line); margin-left: -4px; }
+.row-detail .kv { display: flex; flex-direction: column; gap: 2px; }
+.row-detail .kv span { font-size: 12px; color: var(--muted); }
+.row-detail .kv b { font-size: 14px; font-weight: 600; line-height: 1.45; }

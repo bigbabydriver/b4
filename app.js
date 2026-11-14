@@ -83,7 +83,7 @@
   /* =========================================================
    * 학생 화면
    * ======================================================= */
-  var S = { key: '', data: null, tab: 'home', showAll: false, bpm: null, pct: 100, track: 0, playing: false, loadingAudio: false, loop: false };
+  var S = { key: '', data: null, tab: 'home', showAll: false, bpm: null, pct: 100, track: 0, playing: false, loadingAudio: false, loop: false, openRow: null, ctx: 'none' };
   var audio = new Audio();
   audio.preload = 'auto';
   var audioUrls = {};
@@ -167,6 +167,7 @@
         '<span class="ic vid">' + ICON.vid + '</span><span class="txt"><b>' + esc(x.label) + '</b><span class="small">영상</span></span>' + ICON.chev + '</a>';
     });
     if (m.audio.length) {
+      useCtx(m);
       h += '<div class="subhead"><b>연습 음원</b><span class="small">음정은 그대로, 속도만 조절</span></div>' + playerHTML(m);
     }
     h += '</section>';
@@ -182,6 +183,14 @@
         '</div></section>';
     }
     return h + '</div>';
+  }
+
+  // 지금 플레이어가 어느 회차 음원을 다루는지 맞추기 (바뀌면 정지 후 초기화)
+  function useCtx(m) {
+    var key = String(m && m.audioRow || 'none');
+    if (S.ctx === key) return;
+    audio.pause(); S.playing = false; S.track = 0;
+    S.ctx = key; S.bpm = (m && m.bpm) || null; S.pct = 100;
   }
 
   function rateInfo(m) {
@@ -214,7 +223,7 @@
       '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;margin-right:4px"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg>' +
       '반복</button></div>';
     h += '<div><input class="seek" type="range" min="0" max="1000" value="0" step="1" data-act="seek" aria-label="재생 위치">' +
-      '<div class="times"><span data-t="cur">0:00</span><span data-t="dur">' + (audioUrls[S.track] ? '' : '--:--') + '</span></div></div>';
+      '<div class="times"><span data-t="cur">0:00</span><span data-t="dur">' + (audioUrls[tkey(S.track)] ? '' : '--:--') + '</span></div></div>';
     h += '<div class="bpmbox"><button type="button" class="step" data-act="dec" aria-label="느리게">−</button>' +
       '<span class="bpm"><span class="v">' + r.value + '<small>' + (r.mode === 'bpm' ? ' BPM' : '%') + '</small></span>' +
       '<span>' + (r.mode === 'bpm' ? '원곡 대비 ' + r.pct + '%' : '재생 속도') + '</span></span>' +
@@ -234,8 +243,16 @@
     return h + '</div>';
   }
 
+  function curMat() {
+    if (S.tab === 'log' && S.openRow) {
+      var r = (S.data.sessions || []).filter(function (x) { return x.row === S.openRow; })[0];
+      if (r && r.mat) return r.mat;
+    }
+    return S.data && S.data.materials;
+  }
+
   function applyRate() {
-    var m = S.data && S.data.materials;
+    var m = curMat();
     if (!m) return;
     audio.loop = S.loop;
     setPitchLock();
@@ -246,7 +263,7 @@
     var seek = $app.querySelector('.seek');
     if (!seek) return;
     var dur = audio.duration;
-    if (isFinite(dur) && dur > 0 && audioUrls[S.track]) {
+    if (isFinite(dur) && dur > 0 && audioUrls[tkey(S.track)]) {
       seek.value = Math.round(audio.currentTime / dur * 1000);
       var c = $app.querySelector('[data-t="cur"]'), t = $app.querySelector('[data-t="dur"]');
       if (c) c.textContent = fmtTime(audio.currentTime);
@@ -254,20 +271,22 @@
     }
   }
 
+  function tkey(i) { return S.ctx + ':' + i; }
   function loadTrack(i) {
-    if (audioUrls[i]) return Promise.resolve(audioUrls[i]);
-    return apiGet({ action: 'audio', k: S.key, i: i }).then(function (j) {
+    var key = tkey(i);
+    if (audioUrls[key]) return Promise.resolve(audioUrls[key]);
+    return apiGet({ action: 'audio', k: S.key, i: i, row: S.ctx === 'none' ? '' : S.ctx }).then(function (j) {
       var bin = atob(j.data), arr = new Uint8Array(bin.length);
       for (var n = 0; n < bin.length; n++) arr[n] = bin.charCodeAt(n);
-      audioUrls[i] = URL.createObjectURL(new Blob([arr], { type: j.mime || 'audio/mpeg' }));
-      return audioUrls[i];
+      audioUrls[key] = URL.createObjectURL(new Blob([arr], { type: j.mime || 'audio/mpeg' }));
+      return audioUrls[key];
     });
   }
 
   function togglePlay() {
     if (S.playing) { audio.pause(); S.playing = false; renderStudent(); return; }
-    if (audioUrls[S.track]) {
-      if (audio.src !== audioUrls[S.track]) audio.src = audioUrls[S.track];
+    if (audioUrls[tkey(S.track)]) {
+      if (audio.src !== audioUrls[tkey(S.track)]) audio.src = audioUrls[tkey(S.track)];
       applyRate();
       audio.play().then(function () { S.playing = true; renderStudent(); })
         .catch(function () { toast('재생 버튼을 한 번 더 눌러주세요'); });
@@ -288,7 +307,7 @@
   }
 
   function changeRate(delta, absolute) {
-    var m = S.data.materials, r = rateInfo(m);
+    var m = curMat(), r = rateInfo(m);
     var v = absolute !== undefined ? absolute : r.value + delta * (r.mode === 'bpm' ? 1 : 5);
     v = Math.min(r.max, Math.max(r.min, v));
     if (r.mode === 'bpm') S.bpm = v; else S.pct = v;
@@ -311,6 +330,26 @@
     });
   }
 
+  function rowDetail(r) {
+    var h = '<div class="row-detail">';
+    if (r.song) h += '<div class="kv"><span>곡</span><b>' + esc(r.song) + '</b></div>';
+    if (r.tech) h += '<div class="kv"><span>테크닉·이론</span><b>' + esc(r.tech) + '</b></div>';
+    if (r.task) h += '<div class="kv"><span>연습 과제</span><b>' + esc(r.task) + '</b></div>';
+    var m = r.mat;
+    if (!m) {
+      h += '<p class="empty">이 회차에 등록된 자료가 없어요.</p>';
+    } else {
+      m.sheets.forEach(function (x) {
+        h += '<a class="res" href="' + esc(safeUrl(x.url)) + '" target="_blank" rel="noopener"><span class="ic pdf">PDF</span><span class="txt"><b>' + esc(x.label) + '</b><span class="small">악보</span></span>' + ICON.chev + '</a>';
+      });
+      m.videos.forEach(function (x) {
+        h += '<a class="res" href="' + esc(safeUrl(x.url)) + '" target="_blank" rel="noopener"><span class="ic vid">' + ICON.vid + '</span><span class="txt"><b>' + esc(x.label) + '</b><span class="small">영상</span></span>' + ICON.chev + '</a>';
+      });
+      if (m.audio.length) { useCtx(m); h += playerHTML(m); }
+    }
+    return h + '</div>';
+  }
+
   function studentLog(d) {
     var st = d.stats || {};
     var h = '<div class="stack">';
@@ -328,11 +367,14 @@
       var tone = r.trial ? 'trial' : (r.block === undefined ? 'none' : (r.paid ? 'b' + (r.block % 3) : 'unpaid'));
       var tag = r.trial ? '<span class="pos trial">시범</span>' :
         (r.pos ? '<span class="pos">' + r.pos + '/4</span>' + (r.paid ? '' : '<span class="pos unpaid">납부 전</span>') : '');
-      h += '<div class="list-row tone-' + tone + '"><span class="no"><b>' + r.no + '</b><span>회차</span></span>' +
-        '<span class="txt"><span class="when">' + esc(r.dateLabel) + ' ' + tag + '</span>' +
+      var open = S.openRow === r.row;
+      h += '<button type="button" class="list-row tone-' + tone + (open ? ' open' : '') + '" data-act="openrow" data-row="' + r.row + '" aria-expanded="' + open + '">' +
+        '<span class="no"><b>' + r.no + '</b><span>회차</span></span>' +
+        '<span class="txt"><span class="when">' + esc(r.dateLabel) + ' ' + tag + (r.mat ? '<span class="pos has-mat">자료</span>' : '') + '</span>' +
         '<span class="what">' + esc(r.content || '—') + '</span>' +
         (r.pay ? '<span class="paid">수강료 납부 · ' + esc(r.pay.date) + (r.pay.fee ? ' · ' + esc(r.pay.fee) : '') + '</span>' : '') +
-        '</span></div>';
+        '</span><span class="chev" aria-hidden="true">' + (open ? '▴' : '▾') + '</span></button>';
+      if (open) h += rowDetail(r);
     });
     if (rows.length > 5) {
       h += '<button type="button" class="btn-soft" style="margin-top:8px" data-act="more">' +
@@ -481,9 +523,15 @@
     var act = b.getAttribute('data-act');
     switch (act) {
       case 'retry': location.reload(); break;
-      case 'tab': S.tab = b.getAttribute('data-tab'); renderStudent(); window.scrollTo(0, 0); break;
+      case 'tab': S.tab = b.getAttribute('data-tab'); S.openRow = null; renderStudent(); window.scrollTo(0, 0); break;
       case 'more': S.showAll = !S.showAll; renderStudent(); break;
       case 'morepays': S.showAllPays = !S.showAllPays; renderStudent(); break;
+      case 'openrow':
+        var row = Number(b.getAttribute('data-row'));
+        S.openRow = S.openRow === row ? null : row;
+        if (!S.openRow) { audio.pause(); S.playing = false; }
+        renderStudent();
+        break;
       case 'practice': togglePractice(b.getAttribute('data-date')); break;
       case 'play': togglePlay(); break;
       case 'loop': S.loop = !S.loop; audio.loop = S.loop; renderStudent(); break;
@@ -492,7 +540,7 @@
       case 'quick': changeRate(0, Number(b.getAttribute('data-v'))); break;
       case 'track':
         var i = Number(b.getAttribute('data-i'));
-        if (i !== S.track) { audio.pause(); S.playing = false; S.track = i; if (audioUrls[i]) audio.src = audioUrls[i]; renderStudent(); }
+        if (i !== S.track) { audio.pause(); S.playing = false; S.track = i; if (audioUrls[tkey(i)]) audio.src = audioUrls[tkey(i)]; renderStudent(); }
         break;
       case 'scope': T.scope = b.getAttribute('data-v'); T.open = null; loadTeacher(); break;
       case 'attend': doAttend(b.getAttribute('data-key')); break;
@@ -516,7 +564,7 @@
   });
 
   $app.addEventListener('input', function (e) {
-    if (e.target.classList.contains('seek') && isFinite(audio.duration) && audioUrls[S.track]) {
+    if (e.target.classList.contains('seek') && isFinite(audio.duration) && audioUrls[tkey(S.track)]) {
       audio.currentTime = e.target.value / 1000 * audio.duration;
     }
   });
@@ -562,8 +610,11 @@
       { no: 98, dateLabel: '2025.12.03 (수)', content: 'Settling the Spirit' }
     ];
     // 미리보기: 105회차에 결제, 101회차에 결제 → 4회 묶음 표시
-    var sessions = sessionsRaw.map(function (r) {
+    var sessions = sessionsRaw.map(function (r, i) {
       var x = Object.assign({}, r);
+      x.row = 200 - i; x.song = r.content; x.tech = ''; x.task = '';
+      if (r.no === 107) x.mat = { sheets: [{ label: '밤양갱 악보', url: '#' }], videos: [], audio: [{ index: 0, label: '메트로놈 예시' }], audioSong: '밤양갱', audioRow: x.row, bpm: 84, quick: [60, 72] };
+      if (r.no === 103) x.mat = { sheets: [{ label: 'Settling the Spirit 악보', url: '#' }], videos: [{ label: 'Sea of Love 영상', url: '#' }], audio: [{ index: 0, label: '메트로놈 예시' }], audioSong: 'Settling the Spirit', audioRow: x.row, bpm: 70, quick: [] };
       if (r.no >= 105) { x.block = 2; x.pos = r.no - 104; x.paid = true; }
       else if (r.no >= 101) { x.block = 1; x.pos = r.no - 100; x.paid = true; }
       else { x.block = 0; x.pos = r.no - 96; x.paid = false; }
@@ -578,7 +629,7 @@
         sheets: [{ label: '밤양갱 악보', url: '#' }],
         videos: [{ label: '핑거스타일 기본 연습 영상', url: '#' }],
         audio: [{ index: 0, label: '메트로놈 예시' }],
-        audioSong: '밤양갱', bpm: 84, quick: [60, 72]
+        audioSong: '밤양갱', audioRow: 200, bpm: 84, quick: [60, 72]
       },
       pass: { done: 3, total: 4, from: 105, to: 108, paidLabel: '3/4', payDue: false },
       sessions: sessions,
