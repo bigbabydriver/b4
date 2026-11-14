@@ -174,7 +174,7 @@ function studentPayload_(st) {
   var latest = sessions.length ? sessions[sessions.length - 1] : null;
   var practice = readPractice_(ss);
 
-  return {
+  var out = {
     ok: true,
     name: st.name,
     today: todayStr_(),
@@ -188,6 +188,8 @@ function studentPayload_(st) {
     stats: statsView_(sessions),
     next: nextLesson_(rows, st, latest)
   };
+  saveFileInfo_(); // 새로 조회한 드라이브 파일 정보 저장
+  return out;
 }
 
 // 다음 수업: 학생 시트에 미리 적어둔 미래 날짜가 있으면 그것, 없으면 [학생] 탭 레슨 요일로 계산
@@ -281,8 +283,8 @@ function materialsView_(sessions) {
   var sRow = latestWith('sheets'), vRow = latestWith('videos'), aRow = latestWith('audio');
   var audio = aRow ? parseLinks_(aRow.audio, '연습 음원') : [];
   return {
-    sheets: sRow ? parseLinks_(sRow.sheets, (sRow.song || '') + ' 악보') : [],
-    videos: vRow ? parseLinks_(vRow.videos, (vRow.song || '') + ' 영상') : [],
+    sheets: sRow ? fileLinks_(sRow.sheets, sRow.song) : [],
+    videos: vRow ? fileLinks_(vRow.videos, vRow.song) : [],
     audio: audio.map(function (a, i) { return { index: i, label: a.label }; }),
     audioSong: aRow ? (aRow.song || '') : '',
     audioRow: aRow ? aRow.row : null,
@@ -295,8 +297,8 @@ function materialsView_(sessions) {
 function rowMaterials_(r) {
   if (!r.sheets && !r.videos && !r.audio) return null;
   return {
-    sheets: parseLinks_(r.sheets, (r.song || '') + ' 악보'),
-    videos: parseLinks_(r.videos, (r.song || '') + ' 영상'),
+    sheets: fileLinks_(r.sheets, r.song),
+    videos: fileLinks_(r.videos, r.song),
     audio: parseLinks_(r.audio, '연습 음원').map(function (a, i) { return { index: i, label: a.label }; }),
     audioSong: r.song || '',
     audioRow: r.audio ? r.row : null,
@@ -682,6 +684,60 @@ function cellDateStr_(v) {
 }
 
 // 한 칸에 여러 링크: 줄바꿈으로 구분. "제목 | 주소" 형식이면 제목 사용
+/* 자료 링크에 파일 형식(확장자) 붙이기
+ * - 드라이브 파일: 파일 이름의 확장자 (없으면 파일 종류로 판단)
+ * - 유튜브: YouTube / 그 밖의 주소: 주소 끝의 확장자
+ * - 이름을 따로 적지 않았으면 드라이브 파일 이름을 제목으로 사용
+ * 드라이브 조회 결과는 스크립트 속성에 저장해 두고 다시 쓰기 (화면 열 때마다 조회하지 않도록) */
+var FILE_INFO_ = null, FILE_INFO_NEW_ = {};
+function fileLinks_(text, song) {
+  var links = parseLinks_(text, song || '자료');
+  return links.map(function (x) {
+    var info = linkInfo_(x.url);
+    var label = x.custom ? x.label : (info.name || x.label);
+    return { label: label, url: x.url, ext: info.ext };
+  });
+}
+
+function linkInfo_(url) {
+  if (/youtube\.com\/|youtu\.be\//.test(url)) return { ext: 'YouTube', name: '' };
+  var id = driveId_(url);
+  if (!id) {
+    var m = String(url).split(/[?#]/)[0].match(/\.([A-Za-z0-9]{2,4})$/);
+    return { ext: m ? m[1].toUpperCase() : '', name: '' };
+  }
+  if (!FILE_INFO_) FILE_INFO_ = props_().getProperties();
+  var key = 'f_' + id;
+  if (FILE_INFO_[key]) { try { var c = JSON.parse(FILE_INFO_[key]); return { ext: c[0], name: c[1] }; } catch (e) {} }
+  var ext = '', name = '';
+  try {
+    var f = DriveApp.getFileById(id);
+    var full = f.getName();
+    var mm = full.match(/^(.*)\.([A-Za-z0-9]{2,4})$/);
+    if (mm) { name = mm[1]; ext = mm[2].toUpperCase(); }
+    else { name = full; ext = mimeExt_(f.getMimeType()); }
+  } catch (e) { return { ext: '', name: '' }; } // 권한 없음·삭제된 파일 → 형식 표시 없이
+  FILE_INFO_[key] = FILE_INFO_NEW_[key] = JSON.stringify([ext, name]);
+  return { ext: ext, name: name };
+}
+
+function mimeExt_(mime) {
+  var map = {
+    'application/pdf': 'PDF', 'video/mp4': 'MP4', 'video/quicktime': 'MOV', 'audio/mpeg': 'MP3', 'audio/wav': 'WAV',
+    'image/jpeg': 'JPG', 'image/png': 'PNG',
+    'application/vnd.google-apps.document': 'DOCS', 'application/vnd.google-apps.spreadsheet': 'SHEETS',
+    'application/vnd.google-apps.presentation': 'SLIDES'
+  };
+  return map[mime] || '';
+}
+
+function saveFileInfo_() {
+  var keys = Object.keys(FILE_INFO_NEW_);
+  if (!keys.length) return;
+  try { props_().setProperties(FILE_INFO_NEW_); } catch (e) {}
+  FILE_INFO_NEW_ = {};
+}
+
 function parseLinks_(text, fallback) {
   return String(text || '').split(/\n+/).map(function (line, i, arr) {
     line = line.trim();
@@ -689,7 +745,7 @@ function parseLinks_(text, fallback) {
     var parts = line.split('|');
     var url = parts.length > 1 ? parts.slice(1).join('|').trim() : line;
     var label = parts.length > 1 ? parts[0].trim() : (fallback ? fallback + (arr.length > 1 ? ' ' + (i + 1) : '') : '');
-    return /^https?:\/\//.test(url) ? { label: label || url, url: url } : null;
+    return /^https?:\/\//.test(url) ? { label: label || url, url: url, custom: parts.length > 1 && !!parts[0].trim() } : null;
   }).filter(Boolean);
 }
 
