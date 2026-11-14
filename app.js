@@ -568,6 +568,8 @@
       case 'savekey':
         var inp = document.getElementById('keyinput');
         var v = (inp && inp.value || '').trim();
+        var ad = v.match(/[?&]admin=([A-Za-z0-9]+)/); // 선생님 링크를 붙여넣은 경우
+        if (ad) { store.set('b4admin', ad[1]); location.href = './?admin=' + encodeURIComponent(ad[1]); return; }
         var m = v.match(/[?&]k=([A-Za-z0-9]+)/);
         var key = m ? m[1] : v;
         if (key.length < 12) { toast('링크를 다시 확인해주세요'); return; }
@@ -739,7 +741,7 @@
     var savedAdmin = store.get('b4admin'), savedK = store.get('b4k');
     if (savedAdmin) return startTeacher(savedAdmin);
     if (savedK) return startStudent(savedK);
-    message('링크로 열어주세요', '선생님께 받은 링크를 아래에 붙여넣으면<br>다음부터는 바로 열립니다.',
+    message('링크로 열어주세요', '받은 링크(학생 링크 또는 선생님 링크)를<br>아래에 붙여넣으면 다음부터는 바로 열립니다.',
       '<div class="keyform"><input id="keyinput" type="url" placeholder="받은 링크 붙여넣기" aria-label="받은 링크">' +
       '<button class="primary" data-act="savekey">열기</button></div>');
   }
