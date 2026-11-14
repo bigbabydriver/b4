@@ -265,10 +265,26 @@ function payLabel_(r) {
 
 // 수강료 납부 내역 (최근순) — 레슨 기록의 묶음 색과 같은 번호(block)를 함께 보냄
 function paymentsView_(rows) {
-  return blockRows_(rows).filter(function (r) { return r.pay; })
+  var done = blockRows_(rows);
+  var list = done.filter(function (r) { return r.pay; })
     .map(function (r) {
       return { date: r.pay.date, fee: r.pay.fee, from: r.no, to: r.no + PASS_SIZE - 1, block: r.block };
-    }).reverse();
+    });
+  // 미리 납부한 다음 묶음: 아직 수업 전(미래 날짜) 회차 행의 결제일도 내역에 포함
+  var lastBlock = -1, lastNo = null, lastRow = 0;
+  done.forEach(function (r) {
+    if (typeof r.block === 'number' && r.block > lastBlock) lastBlock = r.block;
+    if (typeof r.no === 'number') lastNo = r.no;
+    if (r.row) lastRow = r.row;
+  });
+  rows.filter(function (r) { return r.isPlanned && r.pay && r.row > lastRow; }).forEach(function (r) {
+    var from = r.no !== null ? r.no : (lastNo !== null ? lastNo + 1 : null);
+    if (from === null) return;
+    lastBlock++;
+    var p = payLabel_(r);
+    list.push({ date: p.date, fee: p.fee, from: from, to: from + PASS_SIZE - 1, block: lastBlock });
+  });
+  return list.reverse();
 }
 
 function lessonView_(r) {
