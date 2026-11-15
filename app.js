@@ -364,6 +364,44 @@
     return h + '</div>';
   }
 
+  // 레슨 기록 한 줄 (누르면 그 회차 자료가 펼쳐짐)
+  function logRow(r, src) {
+      if (r.isBreak) return '<div class="break-row">휴강</div>';
+      // 납부 완료 묶음은 색(주황·초록·파랑 순환), 납부 전 묶음은 회색 점선
+      var tone = r.trial ? 'trial' : (r.block === undefined ? 'none' : (r.paid ? 'b' + (r.block % 3) : 'unpaid'));
+      var tag = r.trial ? '<span class="pos trial">시범</span>' :
+        (r.pos ? '<span class="pos">' + r.pos + '/4</span>' + (r.paid ? '' : '<span class="pos unpaid">납부 전</span>') : '');
+      var open = S.openRow === r.row && (S.openSrc || 'list') === (src || 'list');
+      var h = '<button type="button" class="list-row tone-' + tone + (open ? ' open' : '') + '" data-act="openrow" data-row="' + r.row + '" aria-expanded="' + open + '">' +
+        '<span class="no"><b>' + r.no + '</b><span>회차</span></span>' +
+        '<span class="txt"><span class="when">' + esc(r.dateLabel) + ' ' + tag + (r.mat ? '<span class="pos has-mat">자료</span>' : '') + '</span>' +
+        '<span class="what">' + esc(r.content || '—') + '</span>' +
+        (r.pay ? '<span class="paid">수강료 납부 · ' + esc(r.pay.date) + (r.pay.fee ? ' · ' + esc(r.pay.fee) : '') + '</span>' : '') +
+        '</span><span class="chev" aria-hidden="true">' + (open ? '▴' : '▾') + '</span></button>';
+      if (open) h += rowDetail(r);
+      return h;
+  }
+
+  // 레슨 기록 검색: 곡·테크닉·과제·날짜·회차 번호에서 찾기
+  function searchHits(rows, q) {
+    q = (q || '').trim().toLowerCase();
+    if (!q) return null;
+    var words = q.split(/\s+/);
+    return rows.filter(function (r) {
+      if (r.isBreak) return false;
+      var hay = [r.no + '회차', r.no, r.dateLabel, r.content, r.song, r.tech, r.task].join(' ').toLowerCase();
+      return words.every(function (w) { return hay.indexOf(w) >= 0; });
+    });
+  }
+  function searchResultsHTML(rows) {
+    var hits = searchHits(rows, S.q);
+    if (!hits) return '<p class="small muted-hint">곡 이름, 테크닉, 과제, 회차 번호로 지난 레슨을 찾을 수 있어요.</p>';
+    if (!hits.length) return '<p class="small muted-hint">찾는 레슨이 없어요.</p>';
+    var h = '<p class="small muted-hint">' + hits.length + '개 회차' + (hits.length > 30 ? ' · 최근 30개만 표시' : '') + '</p>';
+    hits.slice(0, 30).forEach(function (r) { h += logRow(r, 'search'); });
+    return h;
+  }
+
   function studentLog(d) {
     var st = d.stats || {};
     var h = '<div class="stack">';
@@ -375,26 +413,17 @@
     var rows = d.sessions || [];
     var shown = S.showAll ? rows : rows.slice(0, 5);
     h += '<section class="card" style="gap:0"><div class="card-head" style="margin-bottom:8px"><h2>레슨 기록</h2><span class="small">최근순</span></div>';
-    shown.forEach(function (r) {
-      if (r.isBreak) { h += '<div class="break-row">휴강</div>'; return; }
-      // 납부 완료 묶음은 색(주황·초록·파랑 순환), 납부 전 묶음은 회색 점선
-      var tone = r.trial ? 'trial' : (r.block === undefined ? 'none' : (r.paid ? 'b' + (r.block % 3) : 'unpaid'));
-      var tag = r.trial ? '<span class="pos trial">시범</span>' :
-        (r.pos ? '<span class="pos">' + r.pos + '/4</span>' + (r.paid ? '' : '<span class="pos unpaid">납부 전</span>') : '');
-      var open = S.openRow === r.row;
-      h += '<button type="button" class="list-row tone-' + tone + (open ? ' open' : '') + '" data-act="openrow" data-row="' + r.row + '" aria-expanded="' + open + '">' +
-        '<span class="no"><b>' + r.no + '</b><span>회차</span></span>' +
-        '<span class="txt"><span class="when">' + esc(r.dateLabel) + ' ' + tag + (r.mat ? '<span class="pos has-mat">자료</span>' : '') + '</span>' +
-        '<span class="what">' + esc(r.content || '—') + '</span>' +
-        (r.pay ? '<span class="paid">수강료 납부 · ' + esc(r.pay.date) + (r.pay.fee ? ' · ' + esc(r.pay.fee) : '') + '</span>' : '') +
-        '</span><span class="chev" aria-hidden="true">' + (open ? '▴' : '▾') + '</span></button>';
-      if (open) h += rowDetail(r);
-    });
+    shown.forEach(function (r) { h += logRow(r); });
     if (rows.length > 5) {
       h += '<button type="button" class="btn-soft" style="margin-top:8px" data-act="more">' +
         (S.showAll ? '접기' : '이전 기록 더 보기 (전체 ' + (st.total || rows.length) + '회)') + '</button>';
     }
     h += '</section>';
+
+    // 레슨 기록 검색 (레슨 기록 바로 아래)
+    h += '<section class="card" style="gap:0"><div class="card-head" style="margin-bottom:10px"><h2>레슨 기록 검색</h2></div>' +
+      '<input type="search" class="search-input" data-act="search" placeholder="예: 스윗아모르, 16비트, 52" value="' + esc(S.q || '') + '" autocomplete="off">' +
+      '<div class="search-results">' + searchResultsHTML(rows) + '</div></section>';
 
     var pays = d.payments || [];
     if (pays.length) {
@@ -410,14 +439,6 @@
       h += '</section>';
     }
 
-    var rep = d.repertoire || [];
-    if (rep.length) {
-      h += '<section class="card" style="gap:0"><div class="card-head" style="margin-bottom:8px"><h2>레퍼토리</h2><span class="small">' + rep.length + '곡</span></div>';
-      rep.forEach(function (r) {
-        h += '<div class="rep-row"><span class="when">' + esc(r.when) + '</span><span><b>' + esc(r.title) + '</b><span class="small">' + esc(r.meta) + '</span></span></div>';
-      });
-      h += '</section>';
-    }
     return h + '</div>';
   }
 
@@ -550,7 +571,9 @@
       case 'morepays': S.showAllPays = !S.showAllPays; renderStudent(); break;
       case 'openrow':
         var row = Number(b.getAttribute('data-row'));
-        S.openRow = S.openRow === row ? null : row;
+        var src = b.closest('.search-results') ? 'search' : 'list'; // 검색 결과에서 연 것인지
+        S.openRow = (S.openRow === row && S.openSrc === src) ? null : row;
+        S.openSrc = src;
         if (!S.openRow) { audio.pause(); S.playing = false; }
         renderStudent();
         break;
@@ -588,6 +611,12 @@
   });
 
   $app.addEventListener('input', function (e) {
+    if (e.target.classList.contains('search-input')) {
+      S.q = e.target.value;
+      var box = $app.querySelector('.search-results');
+      if (box && S.data) box.innerHTML = searchResultsHTML(S.data.sessions || []);
+      return;
+    }
     if (e.target.classList.contains('seek') && isFinite(audio.duration) && audioUrls[tkey(S.track)]) {
       audio.currentTime = e.target.value / 1000 * audio.duration;
     }

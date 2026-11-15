@@ -237,3 +237,9 @@ button.list-row { width: 100%; background: none; border: 0; border-top: 1px soli
 .next-lesson .time { color: var(--muted); font-size: 15px; margin-left: 4px; }
 .res .ic.long { font-size: 9px; letter-spacing: -0.2px; }
 .stu .who .small { word-break: keep-all; }
+
+/* 레슨 기록 검색 */
+.search-input { width: 100%; height: 46px; border: 1px solid var(--line); border-radius: 12px; padding: 0 14px; font-size: 16px; background: #F9F8F5; font-family: inherit; color: inherit; -webkit-appearance: none; }
+.search-input:focus { outline: 2px solid var(--ink); outline-offset: 1px; background: #fff; }
+.search-results { margin-top: 6px; }
+.muted-hint { color: var(--muted); padding: 8px 0 4px; }
