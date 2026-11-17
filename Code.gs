@@ -27,7 +27,7 @@ var DOW = ['일', '월', '화', '수', '목', '금', '토'];
 
 // 레슨기록 열 번호 (1부터)
 var C = { DONE: 1, NO: 2, DATE: 3, PAY: 4, SONG: 5, TECH: 6, TASK: 7, REF: 8,
-          SHEETS: 9, VIDEOS: 10, AUDIO: 11, BPM: 12, QUICK: 13, NOTE: 14, FEE: 15 };
+          SHEETS: 9, VIDEOS: 10, AUDIO: 11, BPM: 12, QUICK: 13, NOTE: 14, FEE: 15, MSG: 16 }; // P열: from 새봄 (학생에게 보이는 한마디)
 
 /* =============================================================
  * 메뉴
@@ -43,6 +43,9 @@ function onOpen() {
     .addItem('선택한 학생 링크 재발급', 'reissueSelectedLink')
     .addItem('선생님(관리자) 링크 보기', 'showAdminLink')
     .addItem('선생님 링크 재발급', 'reissueAdminLink')
+    .addSeparator()
+    .addItem('곡 이름 정리 목록 반영', 'applySongFixes')
+    .addItem('곡별 자료 목록 → 빈칸 채우기', 'applySongLibrary')
     .addToUi();
 }
 
@@ -242,7 +245,7 @@ function blockRows_(rows) {
     if (r.isBreak) { out.push({ isBreak: true, content: '휴강' }); return; }
     if (!r.isSession) return;
     var item = { no: r.no, row: r.row, dateLabel: dateLabel_(r.date), content: [r.song, r.tech].filter(Boolean).join(' · '),
-                 song: r.song, tech: r.tech, task: r.task, mat: rowMaterials_(r) };
+                 song: r.song, tech: r.tech, task: r.task, msg: r.msg || '', mat: rowMaterials_(r) };
     if (r.no === 0) {
       item.trial = true;                     // 0회차 = 시범 수업
     } else {
@@ -288,7 +291,7 @@ function paymentsView_(rows) {
 }
 
 function lessonView_(r) {
-  return { no: r.no, date: r.date, dateLabel: dateLabel_(r.date), song: r.song, tech: r.tech, task: r.task };
+  return { no: r.no, date: r.date, dateLabel: dateLabel_(r.date), song: r.song, tech: r.tech, task: r.task, msg: r.msg || '' };
 }
 
 // 자료: 각 칸에서 가장 최근에 값이 있는 회차 기준
@@ -518,6 +521,11 @@ function saveRecord_(st, b) {
     set(C.AUDIO, clean_(b.audio));
     set(C.BPM, b.bpm ? Number(b.bpm) : '');
     set(C.QUICK, clean_(b.quick));
+    if (b.msg !== undefined) {               // from 새봄 (P열). 열이 없으면 만들고 제목도 붙임
+      if (sh.getMaxColumns() < C.MSG) sh.insertColumnsAfter(sh.getMaxColumns(), C.MSG - sh.getMaxColumns());
+      if (!String(sh.getRange(1, C.MSG).getValue()).trim()) sh.getRange(1, C.MSG).setValue('from 새봄');
+      set(C.MSG, clean_(b.msg));
+    }
     if (b.paid === true) {
       sh.getRange(row, C.PAY).setValue(noon_(todayStr_())).setNumberFormat('yyyy-mm-dd');
       var fee = Number(String(b.fee || '').replace(/[^0-9]/g, ''));
@@ -563,7 +571,7 @@ function adminPayload_(all) {
         latest: latest ? {
           no: latest.no, song: latest.song, tech: latest.tech, task: latest.task,
           sheets: latest.sheets, videos: latest.videos, audio: latest.audio,
-          bpm: latest.bpm || '', quick: latest.quick || ''
+          bpm: latest.bpm || '', quick: latest.quick || '', msg: latest.msg || ''
         } : null
       };
     } catch (err) {
@@ -591,7 +599,8 @@ function readLog_(ss) {
   var sh = logSheet_(ss);
   var n = sh.getLastRow() - 1;
   if (n < 1) return [];
-  var vals = sh.getRange(2, 1, n, 15).getValues();
+  var width = Math.min(16, sh.getMaxColumns());
+  var vals = sh.getRange(2, 1, n, width).getValues();
   var today = todayStr_();
   var out = [];
   vals.forEach(function (v, i) {
@@ -612,7 +621,8 @@ function readLog_(ss) {
       song: str_(v[C.SONG - 1]), tech: str_(v[C.TECH - 1]), task: str_(v[C.TASK - 1]),
       sheets: str_(v[C.SHEETS - 1]), videos: str_(v[C.VIDEOS - 1]), audio: str_(v[C.AUDIO - 1]),
       bpm: v[C.BPM - 1], quick: str_(v[C.QUICK - 1]),
-      fee: typeof v[C.FEE - 1] === 'number' ? v[C.FEE - 1] : null
+      fee: typeof v[C.FEE - 1] === 'number' ? v[C.FEE - 1] : null,
+      msg: v.length >= C.MSG ? str_(v[C.MSG - 1]) : ''
     });
   });
   return out;
@@ -792,4 +802,134 @@ function withLock_(fn) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try { return fn(); } finally { lock.releaseLock(); }
+}
+
+
+/* =========================================================
+ * 곡 이름 일괄 정리 (일회용)
+ * '곡 이름 정리 목록 (검토용)' 시트에서 적용 칸이 O인 줄만 학생 시트 E열에 반영.
+ * 학생 시트의 지금 값이 목록의 '지금 값'과 다르면(그새 고친 경우) 건드리지 않음.
+ * ======================================================= */
+var SONG_FIX_SHEET_ID = '1Iixi4qtmWjD4H-xGik2PgYJ-ry-yn7hFYUcaiNiSGTM'; // 곡 이름 정리 목록 2 (8곳)
+
+function applySongFixes() {
+  var ui = SpreadsheetApp.getUi();
+  var ok = ui.alert('곡 이름 정리', "'곡 이름 정리 목록 2'에서 적용 칸이 O인 줄을 학생 시트에 반영합니다. 진행할까요?", ui.ButtonSet.YES_NO);
+  if (ok !== ui.Button.YES) return;
+
+  // [학생] 탭에서 이름 → 시트 주소
+  var stu = studentSheet_();
+  var urls = {};
+  stu.getRange(2, 1, Math.max(stu.getLastRow() - 1, 1), 3).getValues().forEach(function (r) {
+    if (r[1] && r[2]) urls[String(r[1]).trim()] = toSheetUrl_(String(r[2]));
+  });
+
+  var fixSh = SpreadsheetApp.openById(SONG_FIX_SHEET_ID).getSheets()[0];
+  var rows = fixSh.getRange(2, 1, fixSh.getLastRow() - 1, 7).getValues();
+  var opened = {}, done = 0, skipped = 0, results = [];
+  rows.forEach(function (r) {
+    var apply = String(r[0]).trim().toUpperCase() === 'O';
+    var name = String(r[1]).trim(), rowNo = Number(r[2]);
+    var before = String(r[4]).trim(), after = String(r[5]).trim();
+    if (!apply) { results.push(['건너뜀']); return; }
+    try {
+      if (!urls[name]) throw new Error('학생 탭에 없음');
+      if (!opened[name]) opened[name] = logSheet_(SpreadsheetApp.openByUrl(urls[name]));
+      var cell = opened[name].getRange(rowNo, C.SONG);
+      var now = String(cell.getValue()).trim();
+      if (now === after) { results.push(['이미 반영됨']); return; }
+      if (now !== before) { skipped++; results.push(['시트 값이 달라서 건너뜀']); return; }
+      cell.setValue(after);
+      done++; results.push(['반영함']);
+    } catch (e) { skipped++; results.push(['오류: ' + e.message]); }
+  });
+  fixSh.getRange(2, 7, results.length, 1).setValues(results);
+  ui.alert('곡 이름 정리', done + '줄 반영했습니다.' + (skipped ? ' ' + skipped + '줄은 건너뛰었습니다(목록의 결과 칸 참고).' : ''), ui.ButtonSet.OK);
+}
+
+
+/* =========================================================
+ * 곡별 자료 목록 → 학생 시트 빈칸 채우기 (여러 번 실행해도 됨)
+ * - '곡별 자료 목록'의 '찾는 말'이 E열(곡)에 들어 있는 회차를 찾아
+ *   I(악보)·J(영상)·K(음원)·L(원곡 BPM)·M(빠른 선택 BPM) 중 **빈칸만** 채움
+ * - 한 회차에 곡이 여럿이면 링크는 줄바꿈으로 합치고, BPM은 곡이 하나일 때만 채움
+ * - 이미 적혀 있는 칸은 절대 덮어쓰지 않음
+ * ======================================================= */
+var SONG_LIBRARY_ID = '1y_RKTcOS1SDuaTBDdplqNHVlelM_tB_g95ny3AzDn5o';
+
+function normSong_(s) { return String(s || '').replace(/\s+/g, '').toLowerCase().replace(/’/g, "'"); }
+
+function applySongLibrary() {
+  var ui = SpreadsheetApp.getUi();
+  var ok = ui.alert('빈칸 채우기', "'곡별 자료 목록'에 적힌 자료로 학생 시트의 비어 있는 악보·영상·음원·BPM 칸을 채웁니다. 이미 적힌 칸은 그대로 둡니다. 진행할까요?", ui.ButtonSet.YES_NO);
+  if (ok !== ui.Button.YES) return;
+
+  // 1) 곡별 자료 목록 읽기
+  var lib = SpreadsheetApp.openById(SONG_LIBRARY_ID).getSheets()[0];
+  var lv = lib.getRange(2, 1, Math.max(lib.getLastRow() - 1, 1), 7).getValues();
+  var songs = [];
+  lv.forEach(function (r) {
+    var key = normSong_(r[1]);
+    if (!key) return;
+    var item = { key: key, sheets: str_(r[2]), videos: str_(r[3]), audio: str_(r[4]), bpm: r[5], quick: str_(r[6]) };
+    if (item.sheets || item.videos || item.audio || item.bpm || item.quick) songs.push(item);
+  });
+  if (!songs.length) { ui.alert('빈칸 채우기', '곡별 자료 목록에 채워진 자료가 아직 없습니다.', ui.ButtonSet.OK); return; }
+
+  // 한 칸의 곡 글자에서 목록의 곡 찾기 (더 긴 이름이 겹치면 긴 쪽만: Dreams Tonite ≠ Dreams)
+  function findSongs(text) {
+    var c = normSong_(text), spans = [];
+    songs.forEach(function (s) {
+      var i = c.indexOf(s.key);
+      while (i >= 0) { spans.push({ a: i, b: i + s.key.length, s: s }); i = c.indexOf(s.key, i + 1); }
+    });
+    var keep = [];
+    spans.forEach(function (x) {
+      var inside = spans.some(function (y) { return y !== x && y.a <= x.a && x.b <= y.b && (y.b - y.a) > (x.b - x.a); });
+      if (!inside && keep.indexOf(x.s) < 0) keep.push(x.s);
+    });
+    return keep;
+  }
+  function joinField(list, f) {
+    var out = [];
+    list.forEach(function (s) { if (s[f] && out.indexOf(s[f]) < 0) out.push(s[f]); });
+    return out.join('\n');
+  }
+
+  // 2) 학생 시트마다 채우기
+  var stu = studentSheet_();
+  var sv = stu.getRange(2, 1, Math.max(stu.getLastRow() - 1, 1), 3).getValues();
+  var report = [], total = 0;
+  sv.forEach(function (r) {
+    if (!r[1] || !r[2]) return;
+    var name = String(r[1]).trim(), filled = 0;
+    try {
+      var sh = logSheet_(SpreadsheetApp.openByUrl(toSheetUrl_(String(r[2]))));
+      var n = sh.getLastRow() - 1;
+      if (n < 1) return;
+      var songCol = sh.getRange(2, C.SONG, n, 1).getValues();
+      var range = sh.getRange(2, C.SHEETS, n, 5);           // I~M
+      var vals = range.getValues(), changed = false;
+      for (var i = 0; i < n; i++) {
+        var text = str_(songCol[i][0]);
+        if (!text) continue;
+        var found = findSongs(text);
+        if (!found.length) continue;
+        var row = vals[i];
+        [['sheets', 0], ['videos', 1], ['audio', 2]].forEach(function (p) {
+          if (str_(row[p[1]])) return;
+          var v = joinField(found, p[0]);
+          if (v) { row[p[1]] = v; filled++; changed = true; }
+        });
+        if (found.length === 1) {
+          if (!str_(row[3]) && found[0].bpm) { row[3] = found[0].bpm; filled++; changed = true; }
+          if (!str_(row[4]) && found[0].quick) { row[4] = found[0].quick; filled++; changed = true; }
+        }
+      }
+      if (changed) range.setValues(vals);
+      total += filled;
+      report.push(name + ': ' + filled + '칸');
+    } catch (e) { report.push(name + ': 오류 - ' + e.message); }
+  });
+  ui.alert('빈칸 채우기', '모두 ' + total + '칸을 채웠습니다.\n\n' + report.join('\n'), ui.ButtonSet.OK);
 }
