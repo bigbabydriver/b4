@@ -149,6 +149,11 @@
         '</section>';
     }
 
+    // from 새봄: 최근 회차에 남긴 한마디
+    if (L && L.msg) {
+      h += '<section class="card from-note"><span class="label">from 새봄</span><p>' + esc(L.msg).replace(/\n/g, '<br>') + '</p></section>';
+    }
+
     // 연습 체크
     var w = d.week;
     h += '<section class="card"><div class="card-head"><h2>이번 주 연습</h2>' +
@@ -182,7 +187,7 @@
         '<span class="big">' + p.done + '<small> / ' + p.total + '</small></span></div><div class="bars">';
       for (var i = 0; i < p.total; i++) h += '<i class="' + (i < p.done ? 'on' : '') + '"></i>';
       h += '</div><div class="card-head small"><span>' + p.from + '–' + p.to + '회차</span>' +
-        (p.payDue ? '<span class="due">다음 레슨 전 결제</span>' : '<span>수강료 납부완료 · ' + esc(p.paidLabel) + '</span>') +
+        (p.payDue ? '<span class="due">수강료 납부 필요</span>' : '<span>수강료 납부완료 · ' + esc(p.paidLabel) + '</span>') +
         '</div></section>';
     }
     return h + '</div>';
@@ -354,6 +359,7 @@
     if (r.song) h += '<div class="kv"><span>곡</span><b>' + esc(r.song) + '</b></div>';
     if (r.tech) h += '<div class="kv"><span>테크닉·이론</span><b>' + esc(r.tech) + '</b></div>';
     if (r.task) h += '<div class="kv"><span>연습 과제</span><b>' + esc(r.task) + '</b></div>';
+    if (r.msg) h += '<div class="kv from"><span>from 새봄</span><b>' + esc(r.msg).replace(/\n/g, '<br>') + '</b></div>';
     var m = r.mat;
     if (!m) {
       h += '<p class="empty">이 회차에 등록된 자료가 없어요.</p>';
@@ -501,7 +507,7 @@
       (s.attended || busy ? ' disabled' : '') + ' aria-pressed="' + !!s.attended + '">' + (busy ? '처리 중…' : (s.attended ? '출석 완료' : '출석')) + '</button></div>';
     h += '<div class="tags"><span class="tag">최근 7일 연습 ' + s.practice + '/7</span>' +
       (s.pass ? '<span class="tag">레슨 진행 ' + s.pass.done + '/' + s.pass.total + '</span>' : '') +
-      (s.pass && s.pass.payDue ? '<span class="due">결제 필요</span>' : '') + '</div>';
+      (s.pass && s.pass.payDue ? '<span class="due">수강료 납부 필요</span>' : '') + '</div>';
     h += '<div class="links"><button type="button" class="linkbtn" data-act="form" data-key="' + esc(s.key) + '">' + (T.open === s.key ? '입력 닫기' : '레슨 기록 입력') + '</button>' +
       (s.link ? '<a class="linkbtn" href="' + esc(safeUrl(s.link)) + '" target="_blank" rel="noopener">학생 화면 보기</a>' +
         '<button type="button" class="linkbtn" data-act="copy" data-link="' + esc(s.link) + '">학생 링크 복사</button>' : '') + '</div>';
@@ -522,11 +528,12 @@
       field('song', '곡', L.song) +
       field('tech', '테크닉 · 이론', L.tech) +
       field('task', '연습 과제', L.task, '', '', true) +
+      field('msg', 'from 새봄', L.msg, '', '학생에게 보이는 한마디', true) +
       field('sheets', '악보 링크', L.sheets, '', '한 줄에 하나 · "제목 | 주소" 가능', true) +
       field('videos', '영상 링크', L.videos, '', '한 줄에 하나', true) +
       field('audio', '음원 링크', L.audio, '', '드라이브 MP3 · 한 줄에 하나', true) +
       '<div class="two">' + field('bpm', '원곡 BPM', L.bpm, 'number') + field('quick', '빠른 선택 BPM', L.quick, 'text') + '</div>' +
-      '<div class="two"><label class="check"><input type="checkbox" name="paid"> 이번 회차에 결제 받음</label>' +
+      '<div class="two"><label class="check"><input type="checkbox" name="paid"> 이번 회차에 수강료 받음</label>' +
       field('fee', '수강료(원)', '', 'number') + '</div>' +
       '<button type="submit" class="primary"' + (T.busy === s.key ? ' disabled' : '') + '>시트에 저장</button></form>';
   }
@@ -547,7 +554,7 @@
       action: 'record', admin: T.key, k: key,
       song: f.song.value, tech: f.tech.value, task: f.task.value,
       sheets: f.sheets.value, videos: f.videos.value, audio: f.audio.value,
-      bpm: f.bpm.value, quick: f.quick.value, paid: f.paid.checked, fee: f.fee.value
+      bpm: f.bpm.value, quick: f.quick.value, msg: f.msg.value, paid: f.paid.checked, fee: f.fee.value
     };
     T.busy = key; renderTeacher();
     apiPost(body).then(function (j) {
@@ -677,7 +684,7 @@
     });
     var student = {
       ok: true, name: 'ㄱ', today: todayS,
-      latest: { no: 107, dateLabel: '2026.02.25 (수)', song: '밤양갱', tech: '코러스부터', task: '핑거스타일 기본 연습 구간' },
+      latest: { no: 107, dateLabel: '2026.02.25 (수)', song: '밤양갱', tech: '코러스부터', task: '핑거스타일 기본 연습 구간', msg: '오늘 리듬 정말 좋아졌어요! 코러스 넘어갈 때 손목 힘만 조금 더 빼봐요.' },
       materials: {
         sheets: [{ label: '밤양갱_TAB', url: '#', ext: 'PDF' }, { label: '밤양갱_코드표', url: '#', ext: 'PDF' }],
         videos: [{ label: '핑거스타일 기본 연습', url: '#', ext: 'MP4' }],
