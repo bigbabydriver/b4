@@ -184,7 +184,7 @@ function studentPayload_(st) {
     latest: latest ? lessonView_(latest) : null,
     materials: materialsView_(sessions),
     week: weekView_(practice),
-    pass: passView_(sessions, rows.filter(function (r) { return r.isPlanned && r.row > (latest ? latest.row : 0); })),
+    pass: passView_(rows, rows.filter(function (r) { return r.isPlanned && r.row > (latest ? latest.row : 0); })),
     sessions: blockRows_(rows).reverse(),
     payments: paymentsView_(rows),
     repertoire: repertoire_(sessions),
@@ -240,7 +240,10 @@ function nextLesson_(rows, st, latest) {
 // 레슨 기록: 4회씩 한 묶음. 결제(D열)가 적힌 회차에서 새 묶음이 시작되고 '납부 완료',
 // 결제 없이 4회가 지나 시작된 묶음은 '납부 전'으로 표시
 function blockRows_(rows) {
-  var block = -1, pos = 0, paid = false, out = [];
+  // 수강료는 '적용되는 묶음의 첫 회차'에 납부일과 함께 표시
+  //  - 납부 전 묶음 중간에 적힌 결제일 → 그 묶음 수강료(늦게 낸 경우)
+  //  - 납부 완료 묶음 중간에 적힌 결제일 → 다음 묶음 수강료(미리 낸 경우)
+  var block = -1, pos = 0, paid = false, out = [], pending = null;
   rows.forEach(function (r) {
     if (r.isBreak) { out.push({ isBreak: true, content: '휴강' }); return; }
     if (!r.isSession) return;
@@ -249,19 +252,36 @@ function blockRows_(rows) {
     if (r.no === 0) {
       item.trial = true;                     // 0회차 = 시범 수업
     } else {
-      if (r.pay) { block++; pos = 0; paid = true; item.pay = payLabel_(r); }
-      else if (block < 0 || pos >= PASS_SIZE) { block++; pos = 0; paid = false; }
+      var newBlock = block < 0 || pos >= PASS_SIZE;
+      if (newBlock) {
+        block++; pos = 0; paid = false;
+        if (pending) { paid = true; item.pay = pending; pending = null; }   // 미리 낸 수강료
+      }
+      if (r.pay) {
+        var lab = payLabel_(r);
+        if (!paid) {
+          // 이 묶음 수강료 (제때 또는 늦게 낸 경우) → 묶음 첫 회차에 표시
+          paid = true;
+          var startItem = null;
+          out.forEach(function (o) { if (o.block === block) { o.paid = true; if (!startItem) startItem = o; } });
+          if (startItem) startItem.pay = lab; else item.pay = lab;
+        } else {
+          pending = lab;                     // 다음 묶음 수강료를 미리 낸 경우
+        }
+      }
       pos++;
       item.block = block; item.pos = pos; item.paid = paid;
     }
     out.push(item);
   });
+  if (pending) out.pendingPay = pending;     // 아직 시작 안 한 다음 묶음의 수강료
   return out;
 }
 
 function payLabel_(r) {
   return {
     date: Utilities.formatDate(r.pay, TZ, 'yyyy.MM.dd'),
+    md: Utilities.formatDate(r.pay, TZ, 'M/d'),
     fee: r.fee ? Utilities.formatString('%s원', String(r.fee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')) : ''
   };
 }
@@ -280,6 +300,13 @@ function paymentsView_(rows) {
     if (typeof r.no === 'number') lastNo = r.no;
     if (r.row) lastRow = r.row;
   });
+  if (done.pendingPay) {                     // 지난 회차에 적힌, 다음 묶음 수강료(미리 납부)
+    var curStart = done.filter(function (x) { return x.block === lastBlock; })[0];
+    if (curStart) {
+      lastBlock++;
+      list.push({ date: done.pendingPay.date, fee: done.pendingPay.fee, from: curStart.no + PASS_SIZE, to: curStart.no + 2 * PASS_SIZE - 1, block: lastBlock });
+    }
+  }
   rows.filter(function (r) { return r.isPlanned && r.pay && r.row > lastRow; }).forEach(function (r) {
     var from = r.no !== null ? r.no : (lastNo !== null ? lastNo + 1 : null);
     if (from === null) return;
@@ -346,23 +373,22 @@ function weekView_(practice) {
 }
 
 // 결제일(D)이 적힌 마지막 회차부터 4회 단위
-function passView_(sessions, planned) {
-  // 0회차는 시범 수업 → 수업료 회차 계산에서 제외
-  sessions = sessions.filter(function (r) { return r.no !== 0; });
-  if (!sessions.length) return null;
-  var prepaid = (planned || []).some(function (r) { return !!r.pay; });
-  var startIdx = -1;
-  for (var i = sessions.length - 1; i >= 0; i--) if (sessions[i].pay) { startIdx = i; break; }
-  if (startIdx < 0) return null;
-  var start = sessions[startIdx];
-  var count = sessions.length - startIdx;
+function passView_(rows, planned) {
+  // 레슨 진행 카드: 레슨 기록의 4회 묶음(blockRows_)과 같은 기준. 0회차(시범)는 제외
+  var all = blockRows_(rows);
+  var items = all.filter(function (x) { return !x.isBreak && !x.trial; });
+  if (!items.length) return null;
+  var last = items[items.length - 1];
+  var cur = items.filter(function (x) { return x.block === last.block; });
+  var start = cur[0];
+  var prepaid = !!all.pendingPay || (planned || []).some(function (r) { return !!r.pay; });
   return {
-    done: Math.min(count, PASS_SIZE),
+    done: Math.min(cur.length, PASS_SIZE),
     total: PASS_SIZE,
     from: start.no,
     to: start.no + PASS_SIZE - 1,
-    paidLabel: Utilities.formatDate(start.pay, TZ, 'M/d'),
-    payDue: count >= PASS_SIZE && !prepaid
+    paidLabel: start.pay ? start.pay.md : '',
+    payDue: !last.paid || (cur.length >= PASS_SIZE && !prepaid)
   };
 }
 
@@ -566,7 +592,7 @@ function adminPayload_(all) {
         attended: attended,
         upcoming: nextLesson_(rowsAll, st, latest), // 다음 수업 날짜·요일
         practice: last7,
-        pass: passView_(sessions, planned),
+        pass: passView_(rowsAll, planned),
         link: base ? base + '?k=' + st.key : '',
         latest: latest ? {
           no: latest.no, song: latest.song, tech: latest.tech, task: latest.task,
