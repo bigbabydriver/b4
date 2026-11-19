@@ -243,3 +243,15 @@ button.list-row { width: 100%; background: none; border: 0; border-top: 1px soli
 .search-input:focus { outline: 2px solid var(--ink); outline-offset: 1px; background: #fff; }
 .search-results { margin-top: 6px; }
 .muted-hint { color: var(--muted); padding: 8px 0 4px; }
+
+/* from 새봄 */
+.from-note { gap: 6px; border-left: 4px solid var(--accent); }
+.from-note .label { font-family: var(--display); font-size: 12px; font-weight: 700; color: var(--accent); letter-spacing: 0.2px; }
+.from-note p { margin: 0; font-size: 16px; line-height: 1.55; word-break: keep-all; }
+.kv.from b { font-weight: 500; }
+.kv.from span { color: var(--accent); }
+
+/* 다음 회차 미리 보기 */
+.prep .prep-open { width: 100%; text-align: left; border-radius: 12px; background: #F6F4EF; padding: 12px 14px; display: flex; align-items: center; gap: 10px; }
+.prep .prep-open .txt { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.prep .prep-open .chev { color: var(--muted); }

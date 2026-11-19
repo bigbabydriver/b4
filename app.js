@@ -174,11 +174,28 @@
       h += '<p class="empty">아직 등록된 자료가 없어요.</p>';
     }
     h += fileRows(m);
+    var P = d.prep, prepAudio = S.prepOpen && P && P.mat && P.mat.audio.length;
     if (m.audio.length) {
-      useCtx(m);
-      h += '<div class="subhead"><b>연습 음원</b><span class="small">음정은 그대로, 속도만 조절</span></div>' + playerHTML(m);
+      h += '<div class="subhead"><b>연습 음원</b><span class="small">음정은 그대로, 속도만 조절</span></div>';
+      if (prepAudio) {
+        // 다음 회차 음원을 듣는 중에는 플레이어를 하나만 둠
+        h += '<button type="button" class="more" data-act="prep">다음 회차 미리 보기 닫고 이번 음원 듣기</button>';
+      } else { useCtx(m); h += playerHTML(m); }
     }
     h += '</section>';
+
+    // 다음 회차 미리 보기: 출석 완료 뒤, 다음 회차에 곡·자료를 미리 넣어둔 경우만
+    if (P) {
+      h += '<section class="card prep"><div class="card-head"><h2>다음 회차 미리 보기</h2>' +
+        '<span class="small">' + esc([P.no !== null && P.no !== undefined ? P.no + '회차' : '', P.dateLabel].filter(Boolean).join(' · ')) + '</span></div>';
+      if (S.prepOpen) {
+        h += rowDetail(P) + '<button type="button" class="more" data-act="prep">접기</button>';
+      } else {
+        h += '<button type="button" class="list-row prep-open" data-act="prep"><span class="txt"><b>' + esc(P.song || '다음 회차 자료') + '</b>' +
+          '<span class="small">' + (P.mat ? '자료가 준비되어 있어요 · 눌러서 보기' : '눌러서 보기') + '</span></span><span class="chev">▾</span></button>';
+      }
+      h += '</section>';
+    }
 
     // 레슨 진행
     var p = d.pass;
@@ -252,6 +269,7 @@
   }
 
   function curMat() {
+    if (S.tab === 'home' && S.prepOpen && S.data && S.data.prep && S.data.prep.mat) return S.data.prep.mat;
     if (S.tab === 'log' && S.openRow) {
       var r = (S.data.sessions || []).filter(function (x) { return x.row === S.openRow; })[0];
       if (r && r.mat) return r.mat;
@@ -573,8 +591,9 @@
     var act = b.getAttribute('data-act');
     switch (act) {
       case 'retry': location.reload(); break;
-      case 'tab': S.tab = b.getAttribute('data-tab'); S.openRow = null; renderStudent(); window.scrollTo(0, 0); break;
+      case 'tab': S.tab = b.getAttribute('data-tab'); S.openRow = null; S.prepOpen = false; renderStudent(); window.scrollTo(0, 0); break;
       case 'more': S.showAll = !S.showAll; renderStudent(); break;
+      case 'prep': S.prepOpen = !S.prepOpen; audio.pause(); S.playing = false; renderStudent(); break;
       case 'morepays': S.showAllPays = !S.showAllPays; renderStudent(); break;
       case 'openrow':
         var row = Number(b.getAttribute('data-row'));
@@ -693,6 +712,8 @@
       },
       pass: { done: 3, total: 4, from: 105, to: 108, paidLabel: '3/4', payDue: false },
       next: { date: '', label: '11/18 (수)', time: '19:00', no: 108, isToday: false },
+      prep: { row: 999, no: 108, dateLabel: '2026.11.18 (수)', song: '비비 - 밤양갱', tech: '16비트 스트로크', task: '코러스 리듬 반복', msg: '',
+        mat: { sheets: [{ label: '밤양갱_TAB', url: '#', ext: 'PDF' }], videos: [], audio: [{ index: 0, label: '반주' }], audioSong: '비비 - 밤양갱', audioRow: 999, bpm: 92, quick: [70, 80] } },
       sessions: sessions,
       payments: [
         { date: '2026.03.04', fee: '130,000원', from: 105, to: 108, block: 2 },

@@ -45,6 +45,7 @@ function onOpen() {
     .addItem('선생님 링크 재발급', 'reissueAdminLink')
     .addSeparator()
     .addItem('곡 이름 정리 목록 반영', 'applySongFixes')
+    .addItem('곡별 자료 채우기 제안 → 곡별 자료 목록', 'applyLibraryProposal')
     .addItem('곡별 자료 목록 → 빈칸 채우기', 'applySongLibrary')
     .addToUi();
 }
@@ -189,10 +190,25 @@ function studentPayload_(st) {
     payments: paymentsView_(rows),
     repertoire: repertoire_(sessions),
     stats: statsView_(sessions),
-    next: nextLesson_(rows, st, latest)
+    next: nextLesson_(rows, st, latest),
+    prep: prepView_(rows, latest)
   };
   saveFileInfo_(); // 새로 조회한 드라이브 파일 정보 저장
   return out;
+}
+
+// 다음 회차 미리 보기: 가장 최근 수업이 '출석 완료'(A열 체크)된 뒤에만,
+// 그다음 예정 행에 곡·자료를 미리 적어둔 경우 그 내용을 보여줌
+function prepView_(rows, latest) {
+  if (!latest || !latest.done) return null;
+  var next = rows.filter(function (r) { return r.isPlanned && r.row > latest.row; })[0];
+  if (!next) return null;
+  var mat = rowMaterials_(next);
+  if (!mat && !next.song && !next.tech && !next.task && !next.msg) return null;
+  return {
+    row: next.row, no: next.no, dateLabel: next.date ? dateLabel_(next.date) : '',
+    song: next.song, tech: next.tech, task: next.task, msg: next.msg || '', mat: mat
+  };
 }
 
 // 다음 수업: 학생 시트에 미리 적어둔 미래 날짜가 있으면 그것, 없으면 [학생] 탭 레슨 요일로 계산
@@ -251,6 +267,7 @@ function blockRows_(rows) {
                  song: r.song, tech: r.tech, task: r.task, msg: r.msg || '', mat: rowMaterials_(r) };
     if (r.no === 0) {
       item.trial = true;                     // 0회차 = 시범 수업
+      if (r.pay) pending = payLabel_(r);     // 시범 수업 때 받은 수강료 → 1회차부터 묶음에 적용
     } else {
       var newBlock = block < 0 || pos >= PASS_SIZE;
       if (newBlock) {
@@ -302,10 +319,9 @@ function paymentsView_(rows) {
   });
   if (done.pendingPay) {                     // 지난 회차에 적힌, 다음 묶음 수강료(미리 납부)
     var curStart = done.filter(function (x) { return x.block === lastBlock; })[0];
-    if (curStart) {
-      lastBlock++;
-      list.push({ date: done.pendingPay.date, fee: done.pendingPay.fee, from: curStart.no + PASS_SIZE, to: curStart.no + 2 * PASS_SIZE - 1, block: lastBlock });
-    }
+    var from = curStart ? curStart.no + PASS_SIZE : 1;   // 시범 수업 때 미리 낸 경우 1회차부터
+    lastBlock++;
+    list.push({ date: done.pendingPay.date, fee: done.pendingPay.fee, from: from, to: from + PASS_SIZE - 1, block: lastBlock });
   }
   rows.filter(function (r) { return r.isPlanned && r.pay && r.row > lastRow; }).forEach(function (r) {
     var from = r.no !== null ? r.no : (lastNo !== null ? lastNo + 1 : null);
@@ -447,10 +463,12 @@ function normalizeSong_(s) {
  * =========================================================== */
 function audioPayload_(st, index, rowNum) {
   var ss = SpreadsheetApp.openByUrl(st.sheetUrl);
-  var sessions = readLog_(ss).filter(function (r) { return r.isSession; });
+  var all = readLog_(ss);
+  var sessions = all.filter(function (r) { return r.isSession; });
   var row = null;
   if (rowNum) {
-    row = sessions.filter(function (r) { return r.row === rowNum && r.audio; })[0] || null;
+    // 지난 회차 + 미리 자료를 넣어둔 다음 회차(예정 행)의 음원도 재생
+    row = all.filter(function (r) { return r.row === rowNum && r.audio && !r.isBreak; })[0] || null;
   } else {
     for (var i = sessions.length - 1; i >= 0; i--) if (sessions[i].audio) { row = sessions[i]; break; }
   }
@@ -579,7 +597,8 @@ function adminPayload_(all) {
       var sessions = rowsAll.filter(function (r) { return r.isSession; });
       var latest = sessions[sessions.length - 1] || null;
       var planned = rowsAll.filter(function (r) { return r.isPlanned && r.row > (latest ? latest.row : 0); });
-      var attended = !!(latest && latest.date && Utilities.formatDate(latest.date, TZ, 'yyyy-MM-dd') === today);
+      // 출석 완료 = 오늘 날짜 회차가 있고 + A열(완료)이 체크된 경우만. 날짜만 지났다고 출석으로 보지 않음
+      var attended = !!(latest && latest.date && Utilities.formatDate(latest.date, TZ, 'yyyy-MM-dd') === today && latest.done);
       var practice = readPractice_(ss);
       var last7 = 0;
       for (var i = 1; i <= 7; i++) {
@@ -588,7 +607,8 @@ function adminPayload_(all) {
       }
       return {
         key: st.key, name: st.name, time: st.time, day: st.day,
-        next: latest ? (attended ? latest.no : latest.no + 1) : 0,
+        // 오늘 날짜 회차가 이미 시트에 있으면(출석 전이라도) 그 회차가 오늘 수업
+        next: latest ? ((latest.date && Utilities.formatDate(latest.date, TZ, 'yyyy-MM-dd') === today) ? latest.no : latest.no + 1) : 0,
         attended: attended,
         upcoming: nextLesson_(rowsAll, st, latest), // 다음 수업 날짜·요일
         practice: last7,
@@ -641,6 +661,7 @@ function readLog_(ss) {
     out.push({
       row: i + 2,
       isSession: isSession, isBreak: isBreak, isPlanned: isPlanned,
+      done: v[C.DONE - 1] === true,
       no: hasNo ? Number(no) : null,
       date: date,
       pay: v[C.PAY - 1] instanceof Date ? v[C.PAY - 1] : null,
@@ -836,11 +857,11 @@ function withLock_(fn) {
  * '곡 이름 정리 목록 (검토용)' 시트에서 적용 칸이 O인 줄만 학생 시트 E열에 반영.
  * 학생 시트의 지금 값이 목록의 '지금 값'과 다르면(그새 고친 경우) 건드리지 않음.
  * ======================================================= */
-var SONG_FIX_SHEET_ID = '1Iixi4qtmWjD4H-xGik2PgYJ-ry-yn7hFYUcaiNiSGTM'; // 곡 이름 정리 목록 2 (8곳)
+var SONG_FIX_SHEET_ID = '1TS_9yue2YUndFdqvLL86__98l8w5iLzYm8EwmSy9Twg'; // 곡 이름 정리 목록 3 (Creep)
 
 function applySongFixes() {
   var ui = SpreadsheetApp.getUi();
-  var ok = ui.alert('곡 이름 정리', "'곡 이름 정리 목록 2'에서 적용 칸이 O인 줄을 학생 시트에 반영합니다. 진행할까요?", ui.ButtonSet.YES_NO);
+  var ok = ui.alert('곡 이름 정리', "'곡 이름 정리 목록 3'에서 적용 칸이 O인 줄을 학생 시트에 반영합니다. 진행할까요?", ui.ButtonSet.YES_NO);
   if (ok !== ui.Button.YES) return;
 
   // [학생] 탭에서 이름 → 시트 주소
@@ -881,13 +902,13 @@ function applySongFixes() {
  * - 한 회차에 곡이 여럿이면 링크는 줄바꿈으로 합치고, BPM은 곡이 하나일 때만 채움
  * - 이미 적혀 있는 칸은 절대 덮어쓰지 않음
  * ======================================================= */
-var SONG_LIBRARY_ID = '1y_RKTcOS1SDuaTBDdplqNHVlelM_tB_g95ny3AzDn5o';
+var SONG_LIBRARY_ID = '12MmhT3rINjaTfqnAkSFBze-Ko4bj_yDACBvMm-DWAxM'; // 곡별 자료 목록 (최신)
 
 function normSong_(s) { return String(s || '').replace(/\s+/g, '').toLowerCase().replace(/’/g, "'"); }
 
 function applySongLibrary() {
   var ui = SpreadsheetApp.getUi();
-  var ok = ui.alert('빈칸 채우기', "'곡별 자료 목록'에 적힌 자료로 학생 시트의 비어 있는 악보·영상·음원·BPM 칸을 채웁니다. 이미 적힌 칸은 그대로 둡니다. 진행할까요?", ui.ButtonSet.YES_NO);
+  var ok = ui.alert('빈칸 채우기', "'곡별 자료 목록 (최신)'에 적힌 자료로 학생 시트의 비어 있는 악보·영상·음원·BPM 칸을 채웁니다. 이미 적힌 칸은 그대로 둡니다. 진행할까요?", ui.ButtonSet.YES_NO);
   if (ok !== ui.Button.YES) return;
 
   // 1) 곡별 자료 목록 읽기
@@ -895,9 +916,10 @@ function applySongLibrary() {
   var lv = lib.getRange(2, 1, Math.max(lib.getLastRow() - 1, 1), 7).getValues();
   var songs = [];
   lv.forEach(function (r) {
-    var key = normSong_(r[1]);
-    if (!key) return;
-    var item = { key: key, sheets: str_(r[2]), videos: str_(r[3]), audio: str_(r[4]), bpm: r[5], quick: str_(r[6]) };
+    // '찾는 말'은 쉼표로 여러 개 (예: beatles-iwill, paulmccartney-iwill, iwill)
+    var keys = String(r[1] || '').split(',').map(normSong_).filter(Boolean);
+    if (!keys.length) return;
+    var item = { keys: keys, sheets: str_(r[2]), videos: str_(r[3]), audio: str_(r[4]), bpm: r[5], quick: str_(r[6]) };
     if (item.sheets || item.videos || item.audio || item.bpm || item.quick) songs.push(item);
   });
   if (!songs.length) { ui.alert('빈칸 채우기', '곡별 자료 목록에 채워진 자료가 아직 없습니다.', ui.ButtonSet.OK); return; }
@@ -906,12 +928,15 @@ function applySongLibrary() {
   function findSongs(text) {
     var c = normSong_(text), spans = [];
     songs.forEach(function (s) {
-      var i = c.indexOf(s.key);
-      while (i >= 0) { spans.push({ a: i, b: i + s.key.length, s: s }); i = c.indexOf(s.key, i + 1); }
+      s.keys.forEach(function (k) {
+        var i = c.indexOf(k);
+        while (i >= 0) { spans.push({ a: i, b: i + k.length, s: s }); i = c.indexOf(k, i + 1); }
+      });
     });
     var keep = [];
     spans.forEach(function (x) {
-      var inside = spans.some(function (y) { return y !== x && y.a <= x.a && x.b <= y.b && (y.b - y.a) > (x.b - x.a); });
+      var inside = spans.some(function (y) { return y.s !== x.s && y.a <= x.a && x.b <= y.b && (y.b - y.a) > (x.b - x.a); });
+      // 같은 곡의 다른 찾는 말끼리 겹친 것은 '다른 곡'으로 치지 않음
       if (!inside && keep.indexOf(x.s) < 0) keep.push(x.s);
     });
     return keep;
@@ -958,4 +983,56 @@ function applySongLibrary() {
     } catch (e) { report.push(name + ': 오류 - ' + e.message); }
   });
   ui.alert('빈칸 채우기', '모두 ' + total + '칸을 채웠습니다.\n\n' + report.join('\n'), ui.ButtonSet.OK);
+}
+
+
+/* =========================================================
+ * '곡별 자료 채우기 제안' → '곡별 자료 목록 (최신)'
+ * 적용 칸이 O인 줄만, 목록에서 같은 곡(A열 이름)을 찾아 넣음.
+ * 링크 칸: 같은 곡·같은 칸 제안이 여럿이면 줄바꿈으로 모두 넣고, 이미 적힌 내용은 지우지 않고 아래 줄에 추가.
+ * BPM 칸: 비어 있을 때만 넣음.
+ * ======================================================= */
+var LIB_PROPOSAL_ID = '1ZqVWJhYB0OIUr5-Ej0NwRu8Xxqkk3Yjxcq2eOEkU0DU';
+
+function applyLibraryProposal() {
+  var ui = SpreadsheetApp.getUi();
+  var ok = ui.alert('곡별 자료 목록 채우기', "'곡별 자료 채우기 제안'에서 적용 칸이 O인 줄을 '곡별 자료 목록 (최신)'에 넣습니다. 이미 적힌 링크는 지우지 않고 아래 줄에 추가합니다. 진행할까요?", ui.ButtonSet.YES_NO);
+  if (ok !== ui.Button.YES) return;
+  var COLS = { '악보': 3, '영상': 4, '음원': 5, '원곡 BPM': 6, '빠른 선택 BPM': 7 };
+
+  var lib = SpreadsheetApp.openById(SONG_LIBRARY_ID).getSheets()[0];
+  var lastRow = lib.getLastRow();
+  var libVals = lib.getRange(2, 1, lastRow - 1, 7).getValues();
+  var rowOf = {};
+  libVals.forEach(function (r, i) { var n = String(r[0]).trim().toLowerCase(); if (n) rowOf[n] = i; });
+
+  var prop = SpreadsheetApp.openById(LIB_PROPOSAL_ID).getSheets()[0];
+  var pv = prop.getRange(2, 1, prop.getLastRow() - 1, 7).getValues();
+  var adds = {}, results = [];                 // 'i|col' → [값...]
+  pv.forEach(function (r) {
+    if (String(r[0]).trim().toUpperCase() !== 'O') { results.push(['건너뜀']); return; }
+    var song = String(r[1]).trim().toLowerCase(), col = COLS[String(r[2]).trim()], val = String(r[3]).trim();
+    if (!song || !col || !val) { results.push(['곡·칸·값 중 빈 것이 있음']); return; }
+    if (!(song in rowOf)) { results.push(['목록에 이 곡 이름이 없음']); return; }
+    var i = rowOf[song];
+    var cur = String(libVals[i][col - 1]).trim();
+    if (col >= 6 && cur) { results.push(['BPM이 이미 적혀 있어 그대로 둠']); return; }
+    if (cur && cur.split('\n').some(function (x) { return x.trim() === val || x.indexOf(val.replace(/^.*\|\s*/, '')) >= 0; })) {
+      results.push(['같은 자료가 이미 있음']); return;
+    }
+    var k = i + '|' + col;
+    adds[k] = adds[k] || [];
+    if (adds[k].indexOf(val) < 0) adds[k].push(val);
+    results.push(cur ? ['기존 내용 아래에 추가'] : ['넣음']);
+  });
+  var n = 0;
+  Object.keys(adds).forEach(function (k) {
+    var p = k.split('|'), i = Number(p[0]), col = Number(p[1]);
+    var cur = String(libVals[i][col - 1]).trim();
+    // 링크 칸: 기존 내용은 그대로 두고 아래 줄에 추가 / BPM 칸: 비어 있을 때 첫 값만
+    var v = (col >= 6) ? adds[k][0] : (cur ? cur + '\n' : '') + adds[k].join('\n');
+    lib.getRange(i + 2, col).setValue(v); n++;
+  });
+  prop.getRange(2, 7, results.length, 1).setValues(results);
+  ui.alert('곡별 자료 목록 채우기', n + '칸에 넣었습니다. 줄마다 결과는 제안 시트 G열에 적었습니다.', ui.ButtonSet.OK);
 }
